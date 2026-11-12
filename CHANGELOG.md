@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- Fixed: a level-up could remove the character's link to its history file. dnd5e saves the level-up by replacing the
+  character's flags, and the module's link was left out of that save. The next history write could then start a new
+  file over the old one. The save now keeps the current link.
+
 ## 1.0.0
 
 First release. Tested on Foundry v14 (build 370) with dnd5e 6.0.6, on the default character sheet and Tidy 5e.

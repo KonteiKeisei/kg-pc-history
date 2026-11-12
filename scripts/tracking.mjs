@@ -283,9 +283,14 @@ export function buildEntries(steps, ctx) {
 /* -------------------------------------------- */
 
 function onPreComplete(manager, updates) {
-  // The manager saves a full copy of the clone's flags. Ours may be stale by now (a revision bumped mid-advancement),
-  // so never let it write them.
-  if ( updates?.flags?.[MODULE_ID] ) delete updates.flags[MODULE_ID];
+  // dnd5e saves the clone's whole flags object with recursive: false, which replaces the actor's flags rather than
+  // merging into them. The clone's copy of our flag may be stale (the revision can change while the advancement window
+  // is open), and leaving it out would delete it. So the save carries the actor's current value instead.
+  if ( updates?.flags ) {
+    const current = manager.actor?._source?.flags?.[MODULE_ID];
+    if ( current ) updates.flags[MODULE_ID] = foundry.utils.deepClone(current);
+    else delete updates.flags[MODULE_ID];
+  }
   if ( manager.actor ) markAdvancing(manager.actor);
   try {
     const actor = manager.actor;

@@ -1,0 +1,43 @@
+<div class="kg-pch-form kg-pch-scroll">
+  <p class="hint">Players can use any checked method when Allow Rolling is on. Hover a method for how it works.</p>
+  <fieldset>
+    <legend>Methods</legend>
+    {{#each methods}}
+      <label class="kg-pch-check" data-tooltip="{{hint}}" data-tooltip-direction="LEFT">
+        <input type="checkbox" name="methods.{{id}}" {{#if checked}}checked{{/if}}>
+        <span class="name">{{label}}</span>
+        <code>{{formula}}{{#if (eq count 7)}} × 7{{/if}}</code>
+        <i class="fa-solid fa-circle-question kg-pch-q"></i>
+      </label>
+    {{/each}}
+  </fieldset>
+  <fieldset>
+    <legend>Rerolls</legend>
+    <div class="form-group">
+      <label>Full Set Rerolls</label>
+      <div class="form-fields"><input type="number" name="rerollLimit" value="{{cfg.rerollLimit}}" min="0" step="1"></div>
+      <p class="hint">How many times a player may throw away a whole set and roll again. Discarded sets stay in the record.</p>
+    </div>
+    <div class="form-group">
+      <label>Free Reroll for Weak Sets</label>
+      <div class="form-fields"><input type="checkbox" name="freeReroll" {{#if cfg.freeReroll}}checked{{/if}}></div>
+      <p class="hint">A set whose six modifiers add up to less than the number below may be rerolled without using one of the rerolls above.</p>
+    </div>
+    <div class="form-group">
+      <label>Weak Set Below</label>
+      <div class="form-fields"><input type="number" name="freeRerollBelow" value="{{cfg.freeRerollBelow}}" step="1"></div>
+      <p class="hint">Total of the six modifiers. 1 means a set totaling +0 or worse qualifies.</p>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Chat</legend>
+    <div class="form-group">
+      <label>Roll Visibility</label>
+      <div class="form-fields">
+        <select name="rollMode">
+          {{#each rollModes}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+        </select>
+      </div>
+    </div>
+  </fieldset>
+</div>

@@ -1,0 +1,35 @@
+<div class="kg-pch-form">
+  <div class="form-group">
+    <label>Title</label>
+    <div class="form-fields"><input type="text" name="label" value="{{e.label}}" placeholder="Strength +1, Feat: Alert, Proficiency: Stealth" required></div>
+  </div>
+  <div class="form-group">
+    <label>Detail</label>
+    <div class="form-fields"><input type="text" name="detail" value="{{e.detail}}" placeholder="15 → 16"></div>
+  </div>
+  <div class="form-group">
+    <label>Type</label>
+    <div class="form-fields">
+      <select name="category">
+        {{#each categories}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+      </select>
+    </div>
+  </div>
+  <div class="form-group">
+    <label>Character Level</label>
+    <div class="form-fields"><input type="number" name="level" value="{{level}}" min="0" max="30" step="1" placeholder="Unsorted"></div>
+    <p class="hint">0 is Origin (species, background, starting scores). Leave empty for Unsorted.</p>
+  </div>
+  <div class="form-group">
+    <label>Source</label>
+    <div class="form-fields"><input type="text" name="sourceName" value="{{sourceName}}" placeholder="Fighter 4, Sage, Elf, Great Weapon Master"></div>
+  </div>
+  <div class="form-group">
+    <label>Granted By</label>
+    <div class="form-fields"><input type="text" name="sourceVia" value="{{sourceVia}}" placeholder="Ability Score Improvement, Skill Proficiencies"></div>
+  </div>
+  <div class="form-group stacked">
+    <label>GM Note</label>
+    <textarea name="note" rows="3">{{e.note}}</textarea>
+  </div>
+</div>

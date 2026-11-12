@@ -1,0 +1,224 @@
+<div class="kg-pch-history">
+  {{#if pendingCount}}
+    <p class="kg-pch-banner"><i class="fa-solid fa-hourglass-half"></i> {{pendingCount}} change{{#unless (eq pendingCount 1)}}s{{/unless}} waiting for a GM to come online.</p>
+  {{/if}}
+
+  {{!-- Ability scores --}}
+  <section class="kg-pch-card kg-pch-gen">
+    <header class="kg-pch-head">
+      <h3><i class="fa-solid fa-dice-d20"></i> Ability Scores</h3>
+      <div class="kg-pch-gen-meta">
+        {{#if generation}}
+          <span class="kg-pch-pill strong">{{generation.method}}</span>
+          {{#if generation.rolling}}<span class="kg-pch-pill warn">Rolled, not yet assigned</span>{{/if}}
+          {{#if generation.points}}<span>{{generation.points}}</span>{{/if}}
+          {{#if generation.by}}<span>{{generation.by}}</span>{{/if}}
+          {{#if generation.date}}<span>{{generation.date}}</span>{{/if}}
+          {{#unless generation.verified}}<span class="kg-pch-pill warn" data-tooltip="Rolled or recorded while no GM was online">Unverified</span>{{/unless}}
+          {{#if generation.edited}}<span class="kg-pch-pill" data-tooltip="Edited by {{generation.editedBy}}">Edited by GM</span>{{/if}}
+        {{else}}
+          <span>No generation recorded</span>
+        {{/if}}
+      </div>
+      <div class="kg-pch-head-actions">
+        {{#if canGenerate}}
+          <span role="button" tabindex="0" class="kg-pch-btn" data-kg-action="generate">
+            <i class="fa-solid fa-dice"></i> {{#if generation.rolling}}Assign{{else}}Generate{{/if}}
+          </span>
+        {{/if}}
+        {{#if isGM}}
+          <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="edit-generation" data-tooltip="Edit the generation record" aria-label="Edit generation record"><i class="fa-solid fa-pen"></i></span>
+          {{#if generation}}
+            <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="reset-generation" data-tooltip="Reset, so the player can generate again" aria-label="Reset generation"><i class="fa-solid fa-rotate-left"></i></span>
+          {{/if}}
+        {{/if}}
+      </div>
+    </header>
+
+    <div class="kg-pch-scores">
+      {{#each abilities}}
+        <span role="button" tabindex="0" class="kg-pch-score{{#if (eq key @root.openAbility)}} open{{/if}}" data-kg-action="ability" data-ability="{{key}}" aria-label="{{label}}: where it came from">
+          <span class="abbr">{{abbr}}</span>
+          <span class="val">{{value}}</span>
+          <span class="base">{{#if hasBase}}base {{base}}{{#if diffText}} <b>{{diffText}}</b>{{/if}}{{else}}&nbsp;{{/if}}</span>
+        </span>
+      {{/each}}
+    </div>
+    {{#each abilities}}
+      <div class="kg-pch-breakdown" data-ability="{{key}}" {{#unless (eq key @root.openAbility)}}hidden{{/unless}}>
+        <strong>{{label}} {{value}}</strong>
+        {{#each parts}}
+          <span class="part {{cls}}">
+            {{#if @index}}<span class="op"></span>{{/if}}
+            {{text}}{{#if dice}} <span class="kg-pch-dice small">{{#each dice}}<span class="kg-pch-die{{#if off}} off{{/if}}">{{r}}</span>{{/each}}</span>{{/if}}
+            {{#if sub}}<span class="sub">{{sub}}</span>{{/if}}
+          </span>
+        {{/each}}
+      </div>
+    {{/each}}
+
+    {{#if generation.hasDetails}}
+      <details class="kg-pch-gen-details">
+        <summary>Rolls and details</summary>
+        {{#if generation.sets}}
+          <ol class="kg-pch-sets small">
+            {{#each generation.sets}}
+              <li class="kg-pch-set{{#if dropped}} dropped{{/if}}">
+                <span class="kg-pch-dice">{{#each dice}}<span class="kg-pch-die{{#if off}} off{{/if}}">{{r}}</span>{{/each}}</span>
+                <span class="total">{{total}}</span>
+              </li>
+            {{/each}}
+          </ol>
+        {{/if}}
+        {{#if generation.discarded.length}}
+          <ul class="kg-pch-discarded">
+            {{#each generation.discarded}}<li>Discarded set {{n}}: {{totals}}{{#if free}} (free reroll){{/if}}</li>{{/each}}
+          </ul>
+        {{/if}}
+        {{#if generation.note}}<p class="kg-pch-note">{{generation.note}}</p>{{/if}}
+      </details>
+    {{/if}}
+  </section>
+
+  {{!-- Toolbar --}}
+  <section class="kg-pch-toolbar">
+    {{#if hasEntries}}
+      <div class="kg-pch-chips">
+        <span role="button" tabindex="0" class="kg-pch-fchip{{#if allCats}} active{{/if}}" data-kg-action="filter" data-kind="cat" data-value="*">All</span>
+        {{#each categories}}
+          <span role="button" tabindex="0" class="kg-pch-fchip cat-{{id}}{{#if active}} active{{/if}}" data-kg-action="filter" data-kind="cat" data-value="{{id}}" data-tooltip="{{label}}">
+            <i class="{{icon}}"></i> <span class="n">{{count}}</span>
+          </span>
+        {{/each}}
+      </div>
+    {{/if}}
+    <div class="kg-pch-toolrow">
+      {{#if showClassFilter}}
+        <div class="kg-pch-chips">
+          <span role="button" tabindex="0" class="kg-pch-fchip{{#if allClasses}} active{{/if}}" data-kg-action="filter" data-kind="class" data-value="*">All classes</span>
+          {{#each classes}}
+            <span role="button" tabindex="0" class="kg-pch-fchip kg-pch-ctag kg-pch-cls-{{color}}{{#if active}} active{{/if}}" data-kg-action="filter" data-kind="class" data-value="{{id}}">{{name}}{{#if levels}} {{levels}}{{/if}}</span>
+          {{/each}}
+        </div>
+      {{/if}}
+      {{#if hasEntries}}
+        <select class="kg-pch-level-select" aria-label="Level">
+          <option value="">All levels</option>
+          {{#each levels}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+        </select>
+        <input type="search" class="kg-pch-search" placeholder="Search history" value="{{text}}" aria-label="Search history">
+      {{/if}}
+      <div class="kg-pch-head-actions">
+        {{#if hasEntries}}
+          <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="sort" data-tooltip="{{#if desc}}Newest level first{{else}}Oldest level first{{/if}}" aria-label="Change sort order">
+            <i class="fa-solid {{#if desc}}fa-arrow-up-wide-short{{else}}fa-arrow-down-short-wide{{/if}}"></i>
+          </span>
+        {{/if}}
+        {{#if isGM}}
+          {{#if multiclass}}
+            <span role="button" tabindex="0" class="kg-pch-icon{{#unless orderSet}} attention{{/unless}}" data-kg-action="class-order" data-tooltip="{{#if orderSet}}Class order{{else}}Set the class order (which level each class was taken at){{/if}}" aria-label="Class order"><i class="fa-solid fa-layer-group"></i></span>
+          {{/if}}
+          <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="rebuild" data-tooltip="Rebuild from the advancements stored on this character" aria-label="Rebuild from advancements"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+          <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="add" data-tooltip="Add an entry" aria-label="Add entry"><i class="fa-solid fa-plus"></i></span>
+        {{/if}}
+      </div>
+    </div>
+  </section>
+
+  {{!-- Level cards --}}
+  {{#if hasEntries}}
+    <div class="kg-pch-cards">
+      {{#each cards}}
+        <article class="kg-pch-lcard{{#if expanded}} expanded{{/if}}" data-level="{{key}}" data-classes="{{classIds}}" data-pinned="{{#if pinned}}1{{else}}0{{/if}}">
+          <header class="kg-pch-lcard-head" data-kg-action="toggle-card" data-tooltip="Show every detail" data-tooltip-direction="UP">
+            <span class="lvl">{{label}}</span>
+            {{#each tags}}<span class="kg-pch-ctag kg-pch-cls-{{color}}">{{text}}</span>{{/each}}
+            {{#if sources}}<span class="src">{{sources}}</span>{{/if}}
+            {{#if manual}}<span class="kg-pch-ctag man"><i class="fa-solid fa-pencil"></i> {{manual}} hand edit{{#unless (eq manual 1)}}s{{/unless}}</span>{{/if}}
+            {{#if approx}}<span class="kg-pch-pill warn" data-tooltip="Some entries sit at their class level. Set the class order to place them.">Approximate</span>{{/if}}
+            <span class="count">{{count}} <i class="fa-solid fa-list"></i></span>
+          </header>
+          <div class="kg-pch-lcard-rows">
+            {{#each rows}}
+              <div class="kg-pch-trow" data-category="{{id}}">
+                <span class="tl"><i class="{{icon}}"></i> {{label}}</span>
+                <span class="chips">
+                  {{#each chips}}
+                    <span role="button" tabindex="0" class="kg-pch-xchip{{#if manual}} man{{/if}}{{#if removed}} rem{{/if}}{{#if gm}} gm{{/if}}"
+                      data-kg-action="chip" data-entry-id="{{id}}" data-category="{{category}}" data-search="{{search}}">
+                      {{#if manual}}<i class="fa-solid fa-pencil"></i>{{/if}}{{chip}}{{#if chipSub}} <span class="sub">{{chipSub}}</span>{{/if}}{{#if levelApprox}} <i class="fa-solid fa-circle-question approx" data-tooltip="Approximate level"></i>{{/if}}{{#if effectText}} <i class="fa-solid fa-bolt fxmark" data-tooltip="{{effectText}}"></i>{{/if}}
+                    </span>
+                  {{/each}}
+                </span>
+              </div>
+            {{/each}}
+          </div>
+          <ol class="kg-pch-lcard-full">
+            {{#each entries}}
+              <li class="kg-pch-fullrow{{#if manual}} man{{/if}}{{#if removed}} rem{{/if}}" data-entry-id="{{id}}" data-category="{{category}}" data-search="{{search}}">
+                <i class="{{icon}} ic cat-{{category}}" data-tooltip="{{catLabel}}"></i>
+                <span class="lbl">{{label}}{{#if detail}} <span class="det">{{detail}}</span>{{/if}}</span>
+                <span class="meta">{{source}}{{#if levelApprox}} · approximate level{{/if}}{{#if date}} · {{date}}{{/if}}</span>
+                {{#if effectText}}<span class="fxline"><i class="fa-solid fa-bolt"></i> {{effectText}}</span>{{/if}}
+                {{#if @root.isGM}}
+                  <span class="acts">
+                    <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="edit" data-tooltip="Edit" aria-label="Edit entry"><i class="fa-solid fa-pen"></i></span>
+                    <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="delete" data-tooltip="Delete" aria-label="Delete entry"><i class="fa-solid fa-trash"></i></span>
+                  </span>
+                {{/if}}
+                {{#if note}}<p class="kg-pch-note">{{note}}</p>{{/if}}
+              </li>
+            {{/each}}
+          </ol>
+        </article>
+      {{/each}}
+      <p class="kg-pch-empty kg-pch-nomatch" hidden>No entries match these filters.</p>
+    </div>
+  {{else}}
+    <p class="kg-pch-empty">
+      Nothing recorded yet. Level ups, species, backgrounds and feats added through advancement appear here.
+      {{#if isGM}}For a character built before this module, use <i class="fa-solid fa-wand-magic-sparkles"></i> to rebuild its history from its advancements, or <i class="fa-solid fa-plus"></i> to add entries by hand.{{/if}}
+    </p>
+  {{/if}}
+
+  {{!-- Current modifiers: live, never stored --}}
+  <article class="kg-pch-lcard kg-pch-mcard{{#if modifiers.expanded}} expanded{{/if}}" data-level="modifiers">
+    <header class="kg-pch-lcard-head" data-kg-action="toggle-card" data-tooltip="Show every change" data-tooltip-direction="UP">
+      <span class="lvl"><i class="fa-solid fa-wand-sparkles"></i> Current modifiers</span>
+      <span class="src">Effects changing this character right now. Not part of the history.</span>
+      <span class="count">{{modifiers.count}} <i class="fa-solid fa-list"></i></span>
+    </header>
+    {{#if modifiers.count}}
+      <div class="kg-pch-lcard-rows">
+        {{#each modifiers.rows}}
+          <div class="kg-pch-trow" data-category="fx-{{id}}">
+            <span class="tl" data-tooltip="{{hint}}"><i class="{{icon}}"></i> {{label}}</span>
+            <span class="chips">
+              {{#each chips}}
+                <span role="button" tabindex="0" class="kg-pch-xchip fx fx-{{group}}" data-kg-action="effect" data-effect-id="{{id}}">
+                  {{name}}{{#if summary}} <span class="sub">{{summary}}</span>{{/if}}
+                </span>
+              {{/each}}
+            </span>
+          </div>
+        {{/each}}
+      </div>
+      <ol class="kg-pch-lcard-full">
+        {{#each modifiers.all}}
+          <li class="kg-pch-fullrow">
+            <span class="lbl">{{name}}</span>
+            <span class="det">{{summary}}</span>
+            <span class="meta">{{groupLabel}}{{#if source}} · {{source}}{{/if}}{{#if duration}} · {{duration}}{{/if}}</span>
+            {{#if @root.isGM}}
+              <span class="acts" style="opacity:1">
+                <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="record-effect" data-effect-id="{{id}}" data-tooltip="Record in history" aria-label="Record in history"><i class="fa-solid fa-thumbtack"></i></span>
+              </span>
+            {{/if}}
+          </li>
+        {{/each}}
+      </ol>
+    {{else}}
+      <p class="kg-pch-empty kg-pch-mcard-empty">No effects are changing this character right now.</p>
+    {{/if}}
+  </article>
+</div>

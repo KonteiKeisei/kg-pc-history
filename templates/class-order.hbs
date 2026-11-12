@@ -1,0 +1,14 @@
+<div class="kg-pch-form">
+  <p class="hint">dnd5e does not record which order a character's classes were taken in. Pick the class for each character level. Entries from a rebuild, or marked approximate, move to the level this order gives them. Live advancement is already placed correctly.</p>
+  <div class="kg-pch-slots">
+    {{#each slots}}
+      <label class="kg-pch-slot kg-pch-cls-{{color}}">
+        <span class="n">Level {{n}}</span>
+        <select data-slot="{{n}}" aria-label="Class taken at level {{n}}">
+          {{#each options}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{name}}</option>{{/each}}
+        </select>
+      </label>
+    {{/each}}
+  </div>
+  <p class="kg-pch-order-check"></p>
+</div>

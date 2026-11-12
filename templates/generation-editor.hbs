@@ -1,0 +1,34 @@
+<div class="kg-pch-form">
+  <p class="hint">Record how this character's scores were made. Base scores are before species, background and feat bonuses.</p>
+  <div class="form-group">
+    <label>Method</label>
+    <div class="form-fields">
+      <select name="method">
+        {{#each methods}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+      </select>
+    </div>
+  </div>
+  <div class="kg-pch-base-grid">
+    {{#each rows}}
+      <label class="kg-pch-base-cell" data-tooltip="{{label}}{{#if bonus}}: advancement bonus {{bonus}}{{/if}}">
+        <span class="abbr">{{abbr}}</span>
+        <input type="number" name="base.{{key}}" value="{{base}}" min="1" max="30" step="1">
+      </label>
+    {{/each}}
+  </div>
+  {{#if hasBonuses}}<p class="hint">Prefilled from the sheet minus the bonuses this character's advancements already grant.</p>{{/if}}
+  <div class="form-group">
+    <label>Rolled Values</label>
+    <div class="form-fields"><input type="text" name="rolls" value="{{rolls}}" placeholder="16, 14, 13, 12, 10, 8"></div>
+    <p class="hint">Optional. The totals that were rolled, if you know them.</p>
+  </div>
+  <div class="form-group stacked">
+    <label>GM Note</label>
+    <textarea name="note" rows="3">{{note}}</textarea>
+  </div>
+  <div class="form-group">
+    <label>Apply to Sheet</label>
+    <div class="form-fields"><input type="checkbox" name="applyToSheet"></div>
+    <p class="hint">Also set the sheet's scores to these base scores plus advancement bonuses. Leave off to change only the record.</p>
+  </div>
+</div>

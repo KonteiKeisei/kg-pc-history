@@ -1,0 +1,49 @@
+{
+  "id": "kg-pc-history",
+  "title": "KG PC History",
+  "description": "A History tab for dnd5e characters: what every level, species, background and feat changed, and where it came from. Optional ability score generation (point buy, standard array, or GM-approved rolls), off by default.",
+  "version": "1.0.0",
+  "license": "LICENSE",
+  "readme": "https://github.com/KonteiKeisei/kg-pc-history#readme",
+  "url": "https://github.com/KonteiKeisei/kg-pc-history",
+  "bugs": "https://github.com/KonteiKeisei/kg-pc-history/issues",
+  "changelog": "https://github.com/KonteiKeisei/kg-pc-history/blob/main/CHANGELOG.md",
+  "manifest": "https://github.com/KonteiKeisei/kg-pc-history/releases/latest/download/module.json",
+  "download": "https://github.com/KonteiKeisei/kg-pc-history/releases/download/v1.0.0/kg-pc-history-1.0.0.zip",
+  "compatibility": {
+    "minimum": "13",
+    "verified": "14",
+    "maximum": "14"
+  },
+  "authors": [
+    {
+      "name": "Konte"
+    }
+  ],
+  "relationships": {
+    "systems": [
+      {
+        "id": "dnd5e",
+        "type": "system",
+        "compatibility": {
+          "minimum": "5.3.3"
+        }
+      }
+    ],
+    "recommends": [
+      {
+        "id": "tidy5e-sheet",
+        "type": "module",
+        "reason": "The History tab also appears on Tidy 5e character sheets."
+      }
+    ]
+  },
+  "socket": true,
+  "esmodules": [
+    "scripts/main.mjs"
+  ],
+  "styles": [
+    "styles/pc-history.css"
+  ],
+  "languages": []
+}

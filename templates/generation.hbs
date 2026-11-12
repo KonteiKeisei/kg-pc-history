@@ -1,0 +1,147 @@
+<div class="kg-pch-gen-app">
+  {{#if final}}
+    <p class="kg-pch-lead">Ability scores for {{actorName}} are already recorded ({{summary.method}}).</p>
+    <div class="kg-pch-score-strip">
+      {{#each summary.rows}}
+        <div class="kg-pch-score-cell" data-tooltip="{{label}}"><span class="abbr">{{abbr}}</span><span class="val">{{base}}</span></div>
+      {{/each}}
+    </div>
+    <p class="kg-pch-hint">{{#if isGM}}To change them, use Edit or Reset in the Ability Generation section of the History tab.{{else}}Only the GM can change recorded scores.{{/if}}</p>
+  {{else if noModes}}
+    <p class="kg-pch-lead">The GM has not allowed any way to generate ability scores.</p>
+  {{else}}
+    <nav class="kg-pch-modes">
+      {{#each modes}}
+        <button type="button" class="kg-pch-mode{{#if active}} active{{/if}}" data-action="mode" data-mode="{{id}}" {{#if disabled}}disabled{{/if}}>
+          <i class="{{icon}}"></i> {{label}}
+        </button>
+      {{/each}}
+    </nav>
+
+    {{#if hasBonuses}}
+      <p class="kg-pch-hint"><i class="fa-solid fa-circle-info"></i> Bonuses this character already has from species, background or feats are added on top of the base scores.</p>
+    {{/if}}
+    {{#if pending}}
+      <p class="kg-pch-hint warn"><i class="fa-solid fa-hourglass-half"></i> No GM is online. Changes are queued on the character and checked when a GM logs in.</p>
+    {{/if}}
+
+    {{#if pointBuy}}
+      <div class="kg-pch-budget{{#if pointBuy.over}} over{{/if}}">
+        <span>Points spent <strong>{{pointBuy.spent}}</strong> of {{pointBuy.budget}}</span>
+        <span>Remaining <strong>{{pointBuy.remaining}}</strong></span>
+      </div>
+      <table class="kg-pch-table">
+        <thead><tr><th>Ability</th><th class="c">Base</th><th class="c">Cost</th><th class="c">Bonus</th><th class="c">Score</th><th class="c">Mod</th></tr></thead>
+        <tbody>
+          {{#each pointBuy.rows}}
+            <tr>
+              <td><span class="abbr">{{abbr}}</span> {{label}}</td>
+              <td class="c kg-pch-stepper">
+                <button type="button" data-action="step" data-ability="{{key}}" data-delta="-1" {{#unless canDec}}disabled{{/unless}} aria-label="Lower {{label}}"><i class="fa-solid fa-minus"></i></button>
+                <span class="val">{{score}}</span>
+                <button type="button" data-action="step" data-ability="{{key}}" data-delta="1" {{#unless canInc}}disabled{{/unless}} aria-label="Raise {{label}}"><i class="fa-solid fa-plus"></i></button>
+              </td>
+              <td class="c">{{cost}}</td>
+              <td class="c muted">{{bonus}}</td>
+              <td class="c strong">{{final}}</td>
+              <td class="c">{{mod}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+      {{#if leftover}}<p class="kg-pch-hint">{{leftover}} point{{#unless (eq leftover 1)}}s{{/unless}} left unspent. You can still record these scores.</p>{{/if}}
+    {{/if}}
+
+    {{#if standardArray}}
+      <table class="kg-pch-table">
+        <thead><tr><th>Ability</th><th class="c">Base</th><th class="c">Bonus</th><th class="c">Score</th><th class="c">Mod</th></tr></thead>
+        <tbody>
+          {{#each standardArray.rows}}
+            <tr class="{{#if duplicate}}dup{{/if}}">
+              <td><span class="abbr">{{abbr}}</span> {{label}}</td>
+              <td class="c">
+                <select data-kg-sa="{{key}}" aria-label="{{label}}">
+                  <option value="">-</option>
+                  {{#each options}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{value}}{{#if used}} (used){{/if}}</option>{{/each}}
+                </select>
+              </td>
+              <td class="c muted">{{bonus}}</td>
+              <td class="c strong">{{final}}</td>
+              <td class="c">{{mod}}</td>
+            </tr>
+          {{/each}}
+        </tbody>
+      </table>
+      <p class="kg-pch-hint">Use each of 15, 14, 13, 12, 10 and 8 once.</p>
+    {{/if}}
+
+    {{#if roll}}
+      <div class="kg-pch-method">
+        <label>Method
+          <select data-kg-method {{#if roll.locked}}disabled{{/if}}>
+            {{#each roll.methods}}<option value="{{id}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+          </select>
+        </label>
+        {{#if roll.method}}<p class="kg-pch-hint">{{roll.method.hint}}</p>{{/if}}
+      </div>
+
+      {{#if roll.sets}}
+        <ol class="kg-pch-sets">
+          {{#each roll.sets}}
+            <li class="kg-pch-set{{#if dropped}} dropped{{/if}}{{#if used}} used{{/if}}" {{#if dropped}}data-tooltip="Lowest of the seven, discarded"{{/if}}>
+              <span class="kg-pch-dice">{{#each dice}}<span class="kg-pch-die{{#if off}} off{{/if}}">{{r}}</span>{{/each}}</span>
+              <span class="total">{{total}}</span>
+            </li>
+          {{/each}}
+        </ol>
+        {{#unless roll.verified}}<p class="kg-pch-hint warn">Rolled while no GM was online.</p>{{/unless}}
+
+        <table class="kg-pch-table">
+          <thead><tr><th>Ability</th><th class="c">Base</th><th class="c">Bonus</th><th class="c">Score</th><th class="c">Mod</th></tr></thead>
+          <tbody>
+            {{#each roll.rows}}
+              <tr class="{{#if duplicate}}dup{{/if}}">
+                <td><span class="abbr">{{abbr}}</span> {{label}}</td>
+                <td class="c">
+                  {{#if fixed}}
+                    <span class="val">{{final}}</span>
+                  {{else}}
+                    <select data-kg-assign="{{key}}" aria-label="{{label}}">
+                      <option value="">-</option>
+                      {{#each options}}<option value="{{value}}" {{#if selected}}selected{{/if}}>{{label}}</option>{{/each}}
+                    </select>
+                  {{/if}}
+                </td>
+                <td class="c muted">{{bonus}}</td>
+                <td class="c strong">{{final}}</td>
+                <td class="c">{{mod}}</td>
+              </tr>
+            {{/each}}
+          </tbody>
+        </table>
+        <div class="kg-pch-reroll">
+          {{#if roll.reroll.canReroll}}
+            <button type="button" data-action="reroll" {{#if busy}}disabled{{/if}}><i class="fa-solid fa-rotate"></i> Reroll the set</button>
+          {{/if}}
+          <span class="kg-pch-hint">
+            {{#if roll.reroll.free}}Modifiers total {{roll.reroll.modTotal}}: below the minimum, so a reroll is free.
+            {{else if isGM}}GM rerolls are unlimited.
+            {{else}}Rerolls left: {{roll.reroll.left}}.{{/if}}
+            {{#if roll.discarded}} Sets discarded so far: {{roll.discarded}}.{{/if}}
+          </span>
+        </div>
+      {{else}}
+        <button type="button" class="kg-pch-big" data-action="roll" {{#if busy}}disabled{{/if}}>
+          <i class="fa-solid fa-dice"></i> {{#if busy}}Rolling...{{else}}Roll Ability Scores{{/if}}
+        </button>
+        <p class="kg-pch-hint">Rolls are made by the GM's client and recorded on the character. Closing this window does not undo them.</p>
+      {{/if}}
+    {{/if}}
+
+    <footer class="kg-pch-footer">
+      <button type="button" class="kg-pch-primary" data-action="apply" {{#unless canApply}}disabled{{/unless}}>
+        <i class="fa-solid fa-lock"></i> Record Scores
+      </button>
+    </footer>
+  {{/if}}
+</div>

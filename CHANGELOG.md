@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.4
+
+- Rebuild handles characters whose class lost its feature grants (common after moving a character between worlds):
+  it looks up a class or subclass with the same name in the world's compendiums and reads the levels from there. Of
+  several matches, the one that names the most of the character's features is used.
+- Species and background features are placed at level 0 by their feature type, even when the species grants nothing.
+- Rebuild ignores advancement records that point at items the character no longer has, instead of treating those
+  grants as filled.
+- `rebuildEntries` in the module API now returns a Promise.
+
 ## 1.0.3
 
 - Rebuild places features that no advancement recorded (common on imported characters) at the level their class,

@@ -242,7 +242,12 @@ export function buildEntries(steps, ctx) {
         used.add(p.key);
         entries.push(makeEntry({ ...base, ...describeAtom(atom) }));
       }
-      else entries.push(makeEntry({ ...base, ...describeAtom(pseudoAtom(p, after)) }));
+      else {
+        // A record pointing at an item id the character no longer has (copied or re-imported) says nothing; the
+        // item itself, under its new id, is matched to its grant later.
+        if ( p.key.startsWith("item:") && !p.removed && !after.items[p.key.slice(5)] ) continue;
+        entries.push(makeEntry({ ...base, ...describeAtom(pseudoAtom(p, after)) }));
+      }
     }
   }
 
@@ -412,6 +417,14 @@ function requirementAnchor(item, classes) {
   return { classLevel: Number(m[2]), cls };
 }
 
+/**
+ * Grants an advancement already filled: its record maps item id to source uuid. Only ids still on the character count;
+ * a copied or re-imported character can keep records that point at item ids it no longer has.
+ */
+function takenUuids(actor, added) {
+  return new Set(Object.entries(added ?? {}).filter(([id]) => actor.items.has(id)).map(([, uuid]) => uuid));
+}
+
 /** Lowercase, trimmed, without a trailing "(...)", so "Wild Shape (Druid)" matches "Wild Shape". */
 function nameKey(name) {
   return String(name ?? "").replace(/\s*\([^)]*\)\s*$/, "").trim().toLowerCase();
@@ -427,44 +440,100 @@ function grantSlots(actor, at) {
   const slots = [];
   for ( const item of actor.items ) {
     if ( !FIXED_LEVEL_TYPES.has(item.type) ) continue;
-    const cls = (item.type === "class") ? item : (item.type === "subclass" ? item.class : null);
-    if ( (item.type === "subclass") && !cls ) continue;
-    const cap = cls ? Number(cls.system?.levels ?? 0) : Infinity;
-    for ( const adv of Object.values(item.advancement?.byId ?? {}) ) {
-      let pool;
-      let levels;
-      let taken;
-      if ( adv.type === "ItemGrant" ) {
-        pool = adv.configuration?.items ?? [];
-        levels = [Number(adv.level)];
-        taken = new Set(Object.values(adv.value?.added ?? {}));
-      }
-      else if ( adv.type === "ItemChoice" ) {
-        // A choice made through advancement is already linked; only levels with picks left over can hold a stray feature.
-        const added = adv.value?.added ?? {};
-        const choices = adv.configuration?.choices ?? {};
-        pool = adv.configuration?.pool ?? [];
-        levels = Object.keys(choices).map(Number).sort((a, b) => a - b)
-          .filter(L => Object.keys(added[L] ?? {}).length < (Number(choices[L]?.count) || 0));
-        taken = new Set(Object.values(added).flatMap(o => Object.values(o ?? {})));
-      }
-      else continue;
-      levels = levels.filter(L => Number.isFinite(L) && (L <= cap));
-      if ( !levels.length ) continue;
-      for ( const entry of pool ) {
-        const uuid = (typeof entry === "string") ? entry : entry?.uuid;
-        if ( !uuid || taken.has(uuid) ) continue;
-        const name = safe(() => fromUuidSync(uuid, { strict: false })?.name);
-        const anchor = cls ? { classId: cls.id, className: cls.name, classLevel: levels[0] } : null;
-        slots.push({
-          uuid, name: nameKey(name), used: false, anchor,
-          level: cls ? at(cls.id, levels[0]) : levels[0],
-          source: { name: item.name, type: item.type, id: item.id, classLevel: cls ? levels[0] : null, via: advancementTitle(adv) }
-        });
-      }
+    slots.push(...slotsFrom(item, item, actor, at));
+  }
+  return slots;
+}
+
+/**
+ * Grant slots read from `reader`'s advancements, credited to `owner` (the character's own class, subclass, species or
+ * background). Usually both are the same item; for a reference class from a compendium, `reader` is that copy.
+ */
+function slotsFrom(reader, owner, actor, at, via=null) {
+  const slots = [];
+  const cls = (owner.type === "class") ? owner : (owner.type === "subclass" ? owner.class : null);
+  if ( (owner.type === "subclass") && !cls ) return slots;
+  const cap = cls ? Number(cls.system?.levels ?? 0) : Infinity;
+  for ( const adv of Object.values(reader.advancement?.byId ?? {}) ) {
+    let pool;
+    let levels;
+    let taken;
+    if ( adv.type === "ItemGrant" ) {
+      pool = adv.configuration?.items ?? [];
+      levels = [Number(adv.level)];
+      taken = takenUuids(actor, adv.value?.added);
+    }
+    else if ( adv.type === "ItemChoice" ) {
+      // A choice made through advancement is already linked; only levels with picks left over can hold a stray feature.
+      const added = adv.value?.added ?? {};
+      const choices = adv.configuration?.choices ?? {};
+      pool = adv.configuration?.pool ?? [];
+      levels = Object.keys(choices).map(Number).sort((a, b) => a - b)
+        .filter(L => Object.keys(added[L] ?? {}).filter(id => actor.items.has(id)).length < (Number(choices[L]?.count) || 0));
+      taken = new Set(Object.values(added).flatMap(o => [...takenUuids(actor, o)]));
+    }
+    else continue;
+    levels = levels.filter(L => Number.isFinite(L) && (L <= cap));
+    if ( !levels.length ) continue;
+    for ( const entry of pool ) {
+      const uuid = (typeof entry === "string") ? entry : entry?.uuid;
+      if ( !uuid || taken.has(uuid) ) continue;
+      const name = safe(() => fromUuidSync(uuid, { strict: false })?.name);
+      const anchor = cls ? { classId: cls.id, className: cls.name, classLevel: levels[0] } : null;
+      slots.push({
+        uuid, name: nameKey(name), used: false, anchor, ref: !!via,
+        level: cls ? at(cls.id, levels[0]) : levels[0],
+        source: {
+          name: owner.name, type: owner.type, id: owner.id, classLevel: cls ? levels[0] : null,
+          via: via ? `${advancementTitle(adv)}, ${via}` : advancementTitle(adv)
+        }
+      });
     }
   }
   return slots;
+}
+
+/**
+ * Characters moved between worlds often lose their class's feature grants: the class item is there, but nothing on it
+ * says Wild Shape comes at level 2. For each class and subclass on the character, look for one with the same name in
+ * the world's Item compendiums and read the levels from its grants instead. Of several candidates, the one whose grants
+ * name the most of the character's unplaced features wins. Only runs when features are left over, and only loads the
+ * few same-named classes from the in-memory indexes.
+ * @returns {Promise<{slots: object[], subclassLevel: Map<string, number>}>}
+ */
+async function referenceSlots(actor, at, wanted) {
+  const slots = [];
+  const subclassLevel = new Map();
+  const owners = actor.items.filter(i => (i.type === "class") || ((i.type === "subclass") && i.class));
+  for ( const owner of owners ) {
+    const key = nameKey(owner.name);
+    const candidates = [];
+    for ( const pack of game.packs ) {
+      if ( pack.documentName !== "Item" ) continue;
+      for ( const e of pack.index ) {
+        if ( (e.type === owner.type) && (nameKey(e.name) === key) ) candidates.push({ pack, id: e._id });
+      }
+    }
+    let best = null;
+    for ( const { pack, id } of candidates.slice(0, 8) ) {
+      const doc = await safeAsync(() => pack.getDocument(id));
+      if ( !doc ) continue;
+      const found = slotsFrom(doc, owner, actor, at, `from ${doc.name} in ${pack.title}`);
+      const score = found.filter(s => wanted.has(s.name)).length;
+      if ( !best || (score > best.score) ) best = { doc, found, score };
+    }
+    if ( !best ) continue;
+    if ( best.score ) slots.push(...best.found);
+    if ( owner.type === "class" ) {
+      const L = Number(Object.values(best.doc.advancement?.byId ?? {}).find(a => a.type === "Subclass")?.level);
+      if ( Number.isFinite(L) ) subclassLevel.set(owner.id, L);
+    }
+  }
+  return { slots, subclassLevel };
+}
+
+async function safeAsync(fn) {
+  try { return await fn(); } catch(err) { return null; }
 }
 
 /**
@@ -502,7 +571,7 @@ function matchGrants(items, slots) {
  * classes were taken in, so a multiclass character needs a class order (set by the GM) for exact levels; without one,
  * entries sit at their class level and are flagged as approximate.
  */
-export function rebuildEntries(actor, { order=null }={}) {
+export async function rebuildEntries(actor, { order=null }={}) {
   const snap = snapshot(actor._source);
   const classes = actor.items.filter(i => i.type === "class");
   const singleClass = classes.length <= 1;
@@ -538,7 +607,21 @@ export function rebuildEntries(actor, { order=null }={}) {
     referenced.add(cls.id);
   }
   const unlinked = actor.items.filter(i => TRACKED_ITEM_TYPES.has(i.type) && !referenced.has(i.id));
-  const matched = matchGrants(unlinked.filter(i => i.type === "feat"), grantSlots(actor, at));
+  const feats = unlinked.filter(i => i.type === "feat");
+  const matched = matchGrants(feats, grantSlots(actor, at));
+
+  // Features the character's own items could not place: try same-named classes and subclasses from the compendiums.
+  const leftover = feats.filter(i => !matched.has(i.id));
+  let subclassLevel = new Map();
+  if ( leftover.length ) {
+    const ref = await referenceSlots(actor, at, new Set(leftover.map(i => nameKey(i.name))));
+    subclassLevel = ref.subclassLevel;
+    for ( const [id, slot] of matchGrants(leftover, ref.slots) ) matched.set(id, slot);
+  }
+
+  // Species and background features say what they are (system.type), which is enough to put them at level 0.
+  const originOf = { race: actor.items.filter(i => i.type === "race"), background: actor.items.filter(i => i.type === "background") };
+
   for ( const item of unlinked ) {
     let level = null;
     let anchor = null;
@@ -551,11 +634,23 @@ export function rebuildEntries(actor, { order=null }={}) {
       }));
       continue;
     }
+    const kind = item.system?.type?.value;
+    if ( (item.type === "feat") && originOf[kind] ) {
+      const owner = (originOf[kind].length === 1) ? originOf[kind][0] : null;
+      entries.push(makeEntry({
+        ...describeAtom({ key: `item:${item.id}`, added: true, item: snap.items[item.id] }),
+        level: 0, origin: "reconstructed",
+        source: owner ? { name: owner.name, type: owner.type, id: owner.id, classLevel: null, via: "Feature type" } : null
+      }));
+      continue;
+    }
     if ( ["race", "background"].includes(item.type) ) level = 0;
     else if ( (item.type === "subclass") && item.class ) {
-      // A subclass the class's Subclass advancement did not record: it was still taken at that advancement's level.
+      // A subclass the class's Subclass advancement did not record: it was still taken at that advancement's level
+      // (or, when the class has lost its advancements, at the level a same-named compendium class gives).
       const cls = item.class;
-      const L = Number(Object.values(cls.advancement?.byId ?? {}).find(a => a.type === "Subclass")?.level);
+      const L = Number(Object.values(cls.advancement?.byId ?? {}).find(a => a.type === "Subclass")?.level
+        ?? subclassLevel.get(cls.id));
       if ( Number.isFinite(L) ) {
         anchor = { classId: cls.id, className: cls.name, classLevel: L };
         level = at(cls.id, L);

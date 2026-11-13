@@ -730,7 +730,7 @@ async function confirmTyped({ title, content, phrase, label, icon }) {
 
 async function rebuild(actor, view) {
   const order = validClassOrder(actor, view.classOrder) ? view.classOrder : null;
-  const fresh = rebuildEntries(actor, { order });
+  const fresh = await rebuildEntries(actor, { order });
   // Entries an earlier rebuild could not place (no level) move to the level this rebuild found, instead of duplicating.
   const unplaced = new Map(view.entries
     .filter(e => e.key && (e.origin === "reconstructed") && ((e.level === null) || (e.level === undefined)))

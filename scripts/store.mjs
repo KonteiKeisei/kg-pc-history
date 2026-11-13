@@ -14,7 +14,7 @@ import {
  */
 
 const SOCKET = `module.${MODULE_ID}`;
-const GM_ONLY = new Set(["updateEntry", "deleteEntry", "placeEntries", "setGeneration", "resetGeneration", "setClassOrder"]);
+const GM_ONLY = new Set(["updateEntry", "deleteEntry", "deleteEntries", "placeEntries", "setGeneration", "resetGeneration", "setClassOrder"]);
 const APPLIED_CAP = 400;
 const REQUEST_TIMEOUT = 15000;
 const FLUSH_DELAY = 120;
@@ -42,7 +42,28 @@ export function makeEntry(data={}) {
   };
 }
 
-const EDITABLE = ["label", "detail", "category", "level", "note", "source"];
+const ORIGIN_TYPES = new Set(["class", "subclass", "race", "background"]);
+
+/**
+ * What Rebuild's "Start over" removes: entries an earlier rebuild made, and entries tied to a class, subclass, species or
+ * background the character no longer has (it was deleted or swapped for a new copy). Never removes GM entries, notes,
+ * generation records or anything the GM edited.
+ * @param {object[]} entries
+ * @param {(id: string) => boolean} hasItem  whether the character still has an item with this id
+ */
+export function startOverIds(entries, hasItem) {
+  const gone = id => !!id && !hasItem(id);
+  return entries.filter(e => {
+    if ( e.editedBy || (e.origin === "gm") || ["note", "generation"].includes(e.category) ) return false;
+    if ( e.origin === "reconstructed" ) return true;
+    if ( gone(e.anchor?.classId) ) return true;
+    if ( ORIGIN_TYPES.has(e.source?.type) && gone(e.source?.id) ) return true;
+    const [t, id] = String(e.key ?? "").split(":");
+    return (e.category === "class") && ["item", "classLevel"].includes(t) && gone(id);
+  }).map(e => e.id);
+}
+
+const EDITABLE =["label", "detail", "category", "level", "note", "source"];
 
 function entryPatch(data={}) {
   const out = {};
@@ -152,6 +173,11 @@ export function applyOp(data, op, { isGM=false, strict=false }={}) {
     case "deleteEntry":
       data.entries = data.entries.filter(e => e.id !== op.entryId);
       break;
+    case "deleteEntries": {
+      const ids = new Set(op.entryIds ?? []);
+      data.entries = data.entries.filter(e => !ids.has(e.id));
+      break;
+    }
     case "placeEntries":
       // Rebuild found where earlier rebuilt entries with no level belong. Only those are moved.
       for ( const p of op.places ?? [] ) {

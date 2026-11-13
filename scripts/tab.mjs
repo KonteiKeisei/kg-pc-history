@@ -3,7 +3,7 @@ import {
   levelFromSource, renderTemplate, setting, signed, userName, validClassOrder
 } from "./util.mjs";
 import { anyModeAllowed, inferGeneration, keptSets, methodLabel, rerollState } from "./methods.mjs";
-import { getPending, getStore, loadView, reportResults, submit } from "./store.mjs";
+import { getPending, getStore, loadView, reportResults, startOverIds, submit } from "./store.mjs";
 import { rebuildEntries } from "./tracking.mjs";
 import { GenerationApp } from "./apps/generation-app.mjs";
 import { EntryEditor } from "./apps/entry-editor.mjs";
@@ -728,11 +728,12 @@ async function confirmTyped({ title, content, phrase, label, icon }) {
   return result === true;
 }
 
-async function rebuild(actor, view) {
-  const order = validClassOrder(actor, view.classOrder) ? view.classOrder : null;
-  const fresh = await rebuildEntries(actor, { order });
-  // Entries an earlier rebuild could not place (no level) move to the level this rebuild found, instead of duplicating.
-  const unplaced = new Map(view.entries
+/**
+ * What a rebuild would do against `existing`: fresh entries to add, and earlier unplaced rebuilt entries to move to the
+ * level this rebuild found (instead of adding a duplicate).
+ */
+function rebuildPlan(fresh, existing) {
+  const unplaced = new Map(existing
     .filter(e => e.key && (e.origin === "reconstructed") && ((e.level === null) || (e.level === undefined)))
     .map(e => [e.key, e]));
   const places = [];
@@ -743,10 +744,21 @@ async function rebuild(actor, view) {
     places.push({ entryId: old.id, level: e.level, source: e.source, anchor: e.anchor ?? null, levelApprox: !!e.levelApprox });
     placedKeys.add(e.key);
   }
-  const have = new Set(view.entries.map(e => `${e.key}|${e.level ?? ""}`));
+  const have = new Set(existing.map(e => `${e.key}|${e.level ?? ""}`));
   const entries = fresh.filter(e => !e.key || (!have.has(`${e.key}|${e.level ?? ""}`) && !placedKeys.has(e.key)));
+  return { entries, places };
+}
+
+async function rebuild(actor, view) {
+  const order = validClassOrder(actor, view.classOrder) ? view.classOrder : null;
+  const fresh = await rebuildEntries(actor, { order });
+  const { entries, places } = rebuildPlan(fresh, view.entries);
+  // Start over: drop earlier rebuilt entries and anything tied to a class, species or background no longer on the
+  // character, then rebuild against what is left.
+  const stale = new Set(startOverIds(view.entries, id => actor.items.has(id)));
+  const restart = stale.size ? rebuildPlan(fresh, view.entries.filter(e => !stale.has(e.id))) : null;
   const inferred = view.generation ? null : inferGeneration(actor);
-  if ( !entries.length && !places.length && !inferred ) {
+  if ( !entries.length && !places.length && !inferred && !stale.size ) {
     ui.notifications.info("PC History: nothing to add. Every advancement on this character is already in its history.");
     return;
   }
@@ -770,25 +782,53 @@ async function rebuild(actor, view) {
         + "(the layers button on the History tab).</p>" : "")
       + (entries.length ? "<p>Changes made without advancement (typed on the sheet) cannot be rebuilt; add those by hand.</p>" : "")
       + (!entries.length && !places.length
-        ? `<p>Every advancement on ${esc(actor.name)} is already in its history, but no ability generation is recorded.</p>`
+        ? `<p>Every advancement on ${esc(actor.name)} is already in its history.</p>`
         : "")
+      + restartHTML(actor, view, stale)
       + inferHTML,
     buttons: [
       { action: "cancel", label: "Cancel", icon: "fa-solid fa-xmark" },
       {
-        action: "rebuild", label: (entries.length || places.length) ? "Rebuild" : "Record Scores",
-        icon: "fa-solid fa-wand-magic-sparkles", default: true,
-        callback: (event, button) => ({ infer: !!button.form?.elements?.kgInfer?.checked })
+        action: "rebuild", label: "Rebuild", icon: "fa-solid fa-wand-magic-sparkles", default: true,
+        callback: (event, button) => ({
+          infer: !!button.form?.elements?.kgInfer?.checked,
+          restart: !!button.form?.elements?.kgRestart?.checked
+        })
       }
     ],
     rejectClose: false
   });
   if ( !choice || (choice === "cancel") ) return;
+  const plan = (choice.restart && restart) ? restart : { entries, places };
   const ops = [];
-  if ( entries.length ) ops.push({ type: "append", entries });
-  if ( places.length ) ops.push({ type: "placeEntries", places });
+  if ( choice.restart && stale.size ) ops.push({ type: "deleteEntries", entryIds: [...stale] });
+  if ( plan.entries.length ) ops.push({ type: "append", entries: plan.entries });
+  if ( plan.places.length ) ops.push({ type: "placeEntries", places: plan.places });
   if ( inferred && choice.infer ) ops.push({ type: "setGeneration", generation: inferred });
   if ( ops.length ) reportResults(await submit(actor, ops));
+}
+
+/** The "Start over" checkbox, naming the classes, species and backgrounds the character no longer has. */
+function restartHTML(actor, view, stale) {
+  if ( !stale.size ) return "";
+  const gone = new Set();
+  let rebuilt = 0;
+  for ( const e of view.entries ) {
+    if ( !stale.has(e.id) ) continue;
+    if ( e.origin === "reconstructed" ) rebuilt++;
+    if ( e.anchor?.classId && !actor.items.has(e.anchor.classId) ) gone.add(e.anchor.className);
+    if ( e.source?.id && ["class", "subclass", "race", "background"].includes(e.source.type) && !actor.items.has(e.source.id) ) {
+      gone.add(e.source.name);
+    }
+  }
+  const parts = [];
+  if ( rebuilt ) parts.push(`${rebuilt} made by earlier rebuilds`);
+  const names = [...gone].filter(Boolean).map(esc);
+  if ( names.length ) parts.push(`anything from the ${names.join(", ")} items the character no longer has`);
+  return `<label class="kg-pch-check kg-pch-infer"><input type="checkbox" name="kgRestart"><span>`
+    + `<strong>Start over:</strong> remove ${stale.size} entries first${parts.length ? `: ${parts.join("; ")}` : ""}.</span></label>`
+    + "<p class=\"hint\">For a character whose class, species or background was replaced. GM entries, notes, edited "
+    + "entries and the generation record are kept. This cannot be undone.</p>";
 }
 
 function inferredMethodText(gen) {

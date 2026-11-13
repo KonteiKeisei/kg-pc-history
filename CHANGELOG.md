@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.5
+
+- Rebuild has a Start over option for characters whose class, species or background was replaced. It removes entries
+  made by earlier rebuilds and anything tied to items the character no longer has, then rebuilds. GM entries, notes,
+  edited entries and the generation record are kept.
+
 ## 1.0.4
 
 - Rebuild handles characters whose class lost its feature grants (common after moving a character between worlds):

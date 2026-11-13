@@ -731,10 +731,22 @@ async function confirmTyped({ title, content, phrase, label, icon }) {
 async function rebuild(actor, view) {
   const order = validClassOrder(actor, view.classOrder) ? view.classOrder : null;
   const fresh = rebuildEntries(actor, { order });
+  // Entries an earlier rebuild could not place (no level) move to the level this rebuild found, instead of duplicating.
+  const unplaced = new Map(view.entries
+    .filter(e => e.key && (e.origin === "reconstructed") && ((e.level === null) || (e.level === undefined)))
+    .map(e => [e.key, e]));
+  const places = [];
+  const placedKeys = new Set();
+  for ( const e of fresh ) {
+    const old = unplaced.get(e.key);
+    if ( !old || (e.level === null) || (e.level === undefined) || placedKeys.has(e.key) ) continue;
+    places.push({ entryId: old.id, level: e.level, source: e.source, anchor: e.anchor ?? null, levelApprox: !!e.levelApprox });
+    placedKeys.add(e.key);
+  }
   const have = new Set(view.entries.map(e => `${e.key}|${e.level ?? ""}`));
-  const entries = fresh.filter(e => !e.key || !have.has(`${e.key}|${e.level ?? ""}`));
+  const entries = fresh.filter(e => !e.key || (!have.has(`${e.key}|${e.level ?? ""}`) && !placedKeys.has(e.key)));
   const inferred = view.generation ? null : inferGeneration(actor);
-  if ( !entries.length && !inferred ) {
+  if ( !entries.length && !places.length && !inferred ) {
     ui.notifications.info("PC History: nothing to add. Every advancement on this character is already in its history.");
     return;
   }
@@ -750,15 +762,22 @@ async function rebuild(actor, view) {
     content: (entries.length
       ? `<p>Add <strong>${entries.length}</strong> entries rebuilt from the choices stored on ${esc(actor.name)}'s classes, `
         + "species, background and feats? Existing entries are kept, and anything already recorded is skipped.</p>"
-        + (multi && !order ? "<p>This character has more than one class and no class order yet. Entries are placed at their "
-          + "class level and marked approximate until you set the class order (the layers button on the History tab).</p>" : "")
-        + "<p>Changes made without advancement (typed on the sheet) cannot be rebuilt; add those by hand.</p>"
-      : `<p>Every advancement on ${esc(actor.name)} is already in its history, but no ability generation is recorded.</p>`)
+      : "")
+      + (places.length ? `<p>Move <strong>${places.length}</strong> features with no level to the level their class, `
+        + "species or background grants them at (matched by name or compendium source).</p>" : "")
+      + ((entries.length || places.length) && multi && !order ? "<p>This character has more than one class and no class "
+        + "order yet. Entries are placed at their class level and marked approximate until you set the class order "
+        + "(the layers button on the History tab).</p>" : "")
+      + (entries.length ? "<p>Changes made without advancement (typed on the sheet) cannot be rebuilt; add those by hand.</p>" : "")
+      + (!entries.length && !places.length
+        ? `<p>Every advancement on ${esc(actor.name)} is already in its history, but no ability generation is recorded.</p>`
+        : "")
       + inferHTML,
     buttons: [
       { action: "cancel", label: "Cancel", icon: "fa-solid fa-xmark" },
       {
-        action: "rebuild", label: entries.length ? "Rebuild" : "Record Scores", icon: "fa-solid fa-wand-magic-sparkles", default: true,
+        action: "rebuild", label: (entries.length || places.length) ? "Rebuild" : "Record Scores",
+        icon: "fa-solid fa-wand-magic-sparkles", default: true,
         callback: (event, button) => ({ infer: !!button.form?.elements?.kgInfer?.checked })
       }
     ],
@@ -767,6 +786,7 @@ async function rebuild(actor, view) {
   if ( !choice || (choice === "cancel") ) return;
   const ops = [];
   if ( entries.length ) ops.push({ type: "append", entries });
+  if ( places.length ) ops.push({ type: "placeEntries", places });
   if ( inferred && choice.infer ) ops.push({ type: "setGeneration", generation: inferred });
   if ( ops.length ) reportResults(await submit(actor, ops));
 }

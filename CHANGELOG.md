@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.3
+
+- Rebuild places features that no advancement recorded (common on imported characters) at the level their class,
+  subclass, species or background grants them, matched by compendium source first, then by name. A subclass the
+  class's advancement did not record goes to the class's subclass level.
+- Running Rebuild again moves features an earlier rebuild left without a level, instead of adding duplicates.
+
 ## 1.0.2
 
 - Rebuild now also offers to record the character's base ability scores when it has no generation record: the

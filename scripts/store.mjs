@@ -14,7 +14,7 @@ import {
  */
 
 const SOCKET = `module.${MODULE_ID}`;
-const GM_ONLY = new Set(["updateEntry", "deleteEntry", "setGeneration", "resetGeneration", "setClassOrder"]);
+const GM_ONLY = new Set(["updateEntry", "deleteEntry", "placeEntries", "setGeneration", "resetGeneration", "setClassOrder"]);
 const APPLIED_CAP = 400;
 const REQUEST_TIMEOUT = 15000;
 const FLUSH_DELAY = 120;
@@ -151,6 +151,17 @@ export function applyOp(data, op, { isGM=false, strict=false }={}) {
     }
     case "deleteEntry":
       data.entries = data.entries.filter(e => e.id !== op.entryId);
+      break;
+    case "placeEntries":
+      // Rebuild found where earlier rebuilt entries with no level belong. Only those are moved.
+      for ( const p of op.places ?? [] ) {
+        const entry = data.entries.find(e => e.id === p.entryId);
+        if ( !entry || (entry.level !== null && entry.level !== undefined) || (entry.origin !== "reconstructed") ) continue;
+        entry.level = Number(p.level);
+        if ( p.source ) entry.source = p.source;
+        if ( p.anchor ) entry.anchor = p.anchor;
+        entry.levelApprox = !!p.levelApprox;
+      }
       break;
     case "rolled": {
       const gen = data.generation;

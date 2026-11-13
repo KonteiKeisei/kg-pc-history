@@ -181,6 +181,38 @@ export function existingBonuses(actor) {
   return out;
 }
 
+/**
+ * Work out a character's base scores from its sheet: each stored score minus the increases its advancements recorded.
+ * Active effects never change the stored score, so they need no subtracting. Scores typed onto the sheet by hand do,
+ * and cannot be told apart, so the result is a guess the GM confirms. The method is guessed from the bases:
+ * the standard array first (it also costs exactly 27 points), then point buy if they spend exactly the budget.
+ * Returns null when the sheet's scores are unusable.
+ */
+export function inferGeneration(actor) {
+  const bonuses = existingBonuses(actor);
+  const base = {};
+  for ( const a of ABILITIES ) {
+    const v = Number(actor?._source?.system?.abilities?.[a]?.value);
+    if ( !Number.isFinite(v) ) return null;
+    base[a] = v - (bonuses[a] || 0);
+    if ( base[a] < 1 ) return null;
+  }
+  const values = ABILITIES.map(a => base[a]).sort((x, y) => x - y);
+  const array = [...STANDARD_ARRAY].sort((x, y) => x - y);
+  const inBuyRange = values.every(v => (v >= POINT_BUY_MIN) && (v <= POINT_BUY_MAX));
+  let mode = "manual";
+  if ( values.every((v, i) => v === array[i]) ) mode = "standardArray";
+  else if ( inBuyRange && (pointBuySpent(base) === pointBuyBudget()) ) mode = "pointBuy";
+  const gen = {
+    status: "final", mode, methodId: null,
+    methodLabel: mode === "manual" ? "Unknown (rolled or set by hand)" : MODE_LABELS[mode],
+    base, bonuses, sets: null, dropped: null, discarded: [], assignIndex: null, note: "",
+    verified: true, legacy: true, inferred: true
+  };
+  if ( mode === "pointBuy" ) Object.assign(gen, { budget: pointBuyBudget(), pointsSpent: pointBuySpent(base) });
+  return gen;
+}
+
 export function abilityRows(fn) {
   return ABILITIES.map(a => ({ key: a, label: abilityLabel(a), ...fn(a) }));
 }

@@ -206,6 +206,18 @@ export function applyOp(data, op, { isGM=false, strict=false }={}) {
       break;
     }
     case "setGeneration":
+      if ( op.generation?.inferred ) {
+        // Rebuild's guess from the sheet: only fills an empty record, never replaces one.
+        if ( data.generation ) return refuse("This character already has a generation record.");
+        data.generation = { ...op.generation, finalizedBy: op.user, finalizedAt: op.ts };
+        data.entries.push(makeEntry({
+          ts: op.ts, user: op.user, level: 0, category: "generation", origin: "reconstructed",
+          label: `Ability scores inferred from the sheet: ${methodLabel(data.generation)}`,
+          detail: generationSummary(op.generation.base ?? {}),
+          source: { name: methodLabel(data.generation), type: "generation" }
+        }));
+        break;
+      }
       data.generation = op.generation ? { ...op.generation, editedBy: op.user, editedAt: op.ts } : null;
       data.entries.push(makeEntry({
         ts: op.ts, user: op.user, level: 0, category: "generation", origin: "gm",

@@ -269,6 +269,8 @@
 .kg-pch-config .kg-pch-scroll { max-height: 70vh; overflow-y: auto; }
 .kg-pch-check { display: flex; align-items: center; gap: 0.5rem; padding: 0.2rem 0.1rem; cursor: pointer; }
 .kg-pch-check .name { flex: 1; }
+.kg-pch-check.kg-pch-infer { align-items: flex-start; margin-top: 0.5rem; }
+.kg-pch-check.kg-pch-infer input { flex: none; margin-top: 0.2rem; }
 .kg-pch-check code { font-size: 0.85em; opacity: 0.8; }
 .kg-pch-check .kg-pch-q { opacity: 0.45; }
 .kg-pch-check:hover .kg-pch-q { opacity: 0.9; }

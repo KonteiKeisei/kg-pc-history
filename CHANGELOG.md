@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2
+
+- Rebuild now also offers to record the character's base ability scores when it has no generation record: the
+  sheet's scores minus the increases its advancements recorded. The method is guessed (standard array, point buy that
+  spends exactly the budget, otherwise unknown) and the record is marked Inferred until the GM saves it in the editor.
+- The GM's generation editor starts from the same guess when there is no record yet.
+
 ## 1.0.1
 
 - Fixed: a level-up could remove the character's link to its history file. dnd5e saves the level-up by replacing the

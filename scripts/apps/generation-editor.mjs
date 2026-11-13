@@ -1,5 +1,5 @@
 import { ABILITIES, TEMPLATES, abilityAbbr, abilityLabel, openApp } from "../util.mjs";
-import { MODE_LABELS, ROLL_METHODS, existingBonuses, getMethod } from "../methods.mjs";
+import { MODE_LABELS, ROLL_METHODS, existingBonuses, getMethod, inferGeneration } from "../methods.mjs";
 import { reportResults, submit } from "../store.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin } = foundry.applications.api;
@@ -39,7 +39,9 @@ export class GenerationEditor extends HandlebarsApplicationMixin(ApplicationV2) 
   }
 
   async _prepareContext() {
-    const gen = this.generation;
+    // With no record yet, start from the same guess Rebuild makes: the sheet minus advancement increases.
+    const guess = this.generation ? null : inferGeneration(this.actor);
+    const gen = this.generation ?? guess;
     const bonuses = existingBonuses(this.actor);
     const current = gen?.mode === "roll" ? `roll:${gen.methodId}` : (gen?.mode ?? "manual");
     const methods = [
@@ -60,6 +62,7 @@ export class GenerationEditor extends HandlebarsApplicationMixin(ApplicationV2) 
     return {
       methods, rows, rolls, note: gen?.note ?? "",
       hasBonuses: Object.values(bonuses).some(v => v),
+      guessed: !!gen?.inferred,
       buttons: [{ type: "submit", icon: "fa-solid fa-floppy-disk", label: "Save Record" }]
     };
   }

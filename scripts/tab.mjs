@@ -2,7 +2,7 @@ import {
   ABILITIES, CATEGORIES, ORIGINS, TAB_ID, TEMPLATES, abilityAbbr, abilityLabel, esc, formatDate, isCharacter,
   levelFromSource, renderTemplate, setting, signed, userName, validClassOrder
 } from "./util.mjs";
-import { anyModeAllowed, keptSets, methodLabel, rerollState } from "./methods.mjs";
+import { anyModeAllowed, inferGeneration, keptSets, methodLabel, rerollState } from "./methods.mjs";
 import { getPending, getStore, loadView, reportResults, submit } from "./store.mjs";
 import { rebuildEntries } from "./tracking.mjs";
 import { GenerationApp } from "./apps/generation-app.mjs";
@@ -182,6 +182,7 @@ function generationView(gen) {
     by: userName(gen.finalizedBy ?? gen.rolledBy),
     date: formatDate(gen.finalizedAt ?? gen.rolledAt),
     verified: gen.verified !== false,
+    inferred: !!gen.inferred,
     edited: !!gen.editedBy,
     editedBy: userName(gen.editedBy),
     points: gen.mode === "pointBuy" ? `${gen.pointsSpent ?? "?"} of ${gen.budget ?? "?"} points` : "",
@@ -732,21 +733,48 @@ async function rebuild(actor, view) {
   const fresh = rebuildEntries(actor, { order });
   const have = new Set(view.entries.map(e => `${e.key}|${e.level ?? ""}`));
   const entries = fresh.filter(e => !e.key || !have.has(`${e.key}|${e.level ?? ""}`));
-  if ( !entries.length ) {
+  const inferred = view.generation ? null : inferGeneration(actor);
+  if ( !entries.length && !inferred ) {
     ui.notifications.info("PC History: nothing to add. Every advancement on this character is already in its history.");
     return;
   }
   const multi = actor.items.filter(i => i.type === "class").length > 1;
-  const ok = await DialogV2.confirm({
+  const inferHTML = inferred ? `<label class="kg-pch-check kg-pch-infer"><input type="checkbox" name="kgInfer" checked><span>`
+    + `Also record base scores of <strong>${ABILITIES.map(a => `${abilityAbbr(a)} ${inferred.base[a]}`).join(", ")}</strong> `
+    + `(${esc(inferredMethodText(inferred))}), marked Inferred.</span></label>`
+    + "<p class=\"hint\">That is the sheet's scores minus the increases its advancements recorded. A score typed onto "
+    + "the sheet by hand would be counted as base, so check it with the pencil on the Ability Scores card.</p>" : "";
+  const choice = await DialogV2.wait({
     window: { title: "Rebuild From Advancements" },
-    content: `<p>Add <strong>${entries.length}</strong> entries rebuilt from the choices stored on ${esc(actor.name)}'s classes, `
-      + "species, background and feats? Existing entries are kept, and anything already recorded is skipped.</p>"
-      + (multi && !order ? "<p>This character has more than one class and no class order yet. Entries are placed at their "
-        + "class level and marked approximate until you set the class order (the layers button on the History tab).</p>" : "")
-      + "<p>Changes made without advancement (typed on the sheet) cannot be rebuilt; add those by hand.</p>",
+    classes: ["kg-pch"],
+    content: (entries.length
+      ? `<p>Add <strong>${entries.length}</strong> entries rebuilt from the choices stored on ${esc(actor.name)}'s classes, `
+        + "species, background and feats? Existing entries are kept, and anything already recorded is skipped.</p>"
+        + (multi && !order ? "<p>This character has more than one class and no class order yet. Entries are placed at their "
+          + "class level and marked approximate until you set the class order (the layers button on the History tab).</p>" : "")
+        + "<p>Changes made without advancement (typed on the sheet) cannot be rebuilt; add those by hand.</p>"
+      : `<p>Every advancement on ${esc(actor.name)} is already in its history, but no ability generation is recorded.</p>`)
+      + inferHTML,
+    buttons: [
+      { action: "cancel", label: "Cancel", icon: "fa-solid fa-xmark" },
+      {
+        action: "rebuild", label: entries.length ? "Rebuild" : "Record Scores", icon: "fa-solid fa-wand-magic-sparkles", default: true,
+        callback: (event, button) => ({ infer: !!button.form?.elements?.kgInfer?.checked })
+      }
+    ],
     rejectClose: false
   });
-  if ( ok ) reportResults(await submit(actor, [{ type: "append", entries }]));
+  if ( !choice || (choice === "cancel") ) return;
+  const ops = [];
+  if ( entries.length ) ops.push({ type: "append", entries });
+  if ( inferred && choice.infer ) ops.push({ type: "setGeneration", generation: inferred });
+  if ( ops.length ) reportResults(await submit(actor, ops));
+}
+
+function inferredMethodText(gen) {
+  if ( gen.mode === "standardArray" ) return "they match the standard array";
+  if ( gen.mode === "pointBuy" ) return `they spend exactly ${gen.budget} points, so likely point buy`;
+  return "not the standard array or point buy, so rolled or set by hand";
 }
 
 /* -------------------------------------------- */

@@ -15,6 +15,7 @@
           {{#if generation.by}}<span>{{generation.by}}</span>{{/if}}
           {{#if generation.date}}<span>{{generation.date}}</span>{{/if}}
           {{#unless generation.verified}}<span class="kg-pch-pill warn" data-tooltip="Rolled or recorded while no GM was online">Unverified</span>{{/unless}}
+          {{#if generation.inferred}}<span class="kg-pch-pill warn" data-tooltip="Worked out at rebuild from the sheet's scores minus the increases its advancements recorded. Saving it in the GM's editor confirms it.">Inferred</span>{{/if}}
           {{#if generation.edited}}<span class="kg-pch-pill" data-tooltip="Edited by {{generation.editedBy}}">Edited by GM</span>{{/if}}
         {{else}}
           <span>No generation recorded</span>

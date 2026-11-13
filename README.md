@@ -36,7 +36,9 @@ module settings. History tracking works either way.
 
 - Add, edit or delete entries.
 - Edit the generation record of an older character.
-- Rebuild an older character's history from the advancement choices dnd5e stores on its items.
+- Rebuild an older character's history from the advancement choices dnd5e stores on its items. If it has no
+  generation record, Rebuild can work out its base scores (sheet scores minus advancement increases) and guess the
+  method. The record is marked Inferred until the GM confirms it.
 - Set the class order of a multiclass character, which dnd5e does not record.
 
 ## Settings

@@ -17,6 +17,7 @@
     {{/each}}
   </div>
   {{#if hasBonuses}}<p class="hint">Prefilled from the sheet minus the bonuses this character's advancements already grant.</p>{{/if}}
+  {{#if guessed}}<p class="hint">The method is a guess from these scores. Saving confirms the record and removes the Inferred mark.</p>{{/if}}
   <div class="form-group">
     <label>Rolled Values</label>
     <div class="form-fields"><input type="text" name="rolls" value="{{rolls}}" placeholder="16, 14, 13, 12, 10, 8"></div>

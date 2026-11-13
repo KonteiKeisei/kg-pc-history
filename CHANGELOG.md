@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.7
+
+- The ability score record's edit and reset buttons are locked with the same padlock as Rebuild. The Ability Scores
+  card has its own padlock.
+- Unsorted entries are grouped by the item's custom Tidy 5e section when it has one; the rest stay under their type.
+
 ## 1.0.6
 
 - Rebuild is locked by default. The GM unlocks it per character with the padlock on the History tab and a

@@ -27,11 +27,13 @@
             <i class="fa-solid fa-dice"></i> {{#if generation.rolling}}Assign{{else}}Generate{{/if}}
           </span>
         {{/if}}
-        {{#if isGM}}
-          <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="edit-generation" data-tooltip="Edit the generation record" aria-label="Edit generation record"><i class="fa-solid fa-pen"></i></span>
+        {{#if repairUnlocked}}
+          <span role="button" tabindex="0" class="kg-pch-icon attention" data-kg-action="edit-generation" data-tooltip="Edit the generation record" aria-label="Edit generation record"><i class="fa-solid fa-pen"></i></span>
           {{#if generation}}
-            <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="reset-generation" data-tooltip="Reset, so the player can generate again" aria-label="Reset generation"><i class="fa-solid fa-rotate-left"></i></span>
+            <span role="button" tabindex="0" class="kg-pch-icon attention" data-kg-action="reset-generation" data-tooltip="Reset, so the player can generate again" aria-label="Reset generation"><i class="fa-solid fa-rotate-left"></i></span>
           {{/if}}
+        {{else if isGM}}
+          <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="unlock-repair" data-tooltip="The ability score record is locked. Click to unlock editing and reset for this character." aria-label="Unlock repair tools"><i class="fa-solid fa-lock"></i></span>
         {{/if}}
       </div>
     </header>
@@ -123,7 +125,7 @@
             <span role="button" tabindex="0" class="kg-pch-icon attention" data-kg-action="rebuild" data-tooltip="Rebuild from the advancements stored on this character" aria-label="Rebuild from advancements"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
             <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="unlock-repair" data-tooltip="Lock the repair tools" aria-label="Lock repair tools"><i class="fa-solid fa-lock-open"></i></span>
           {{else}}
-            <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="unlock-repair" data-tooltip="History repair is locked. Click to unlock Rebuild for this character." aria-label="Unlock repair tools"><i class="fa-solid fa-lock"></i></span>
+            <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="unlock-repair" data-tooltip="History repair is locked. Click to unlock Rebuild and the ability score record for this character." aria-label="Unlock repair tools"><i class="fa-solid fa-lock"></i></span>
           {{/if}}
           <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="add" data-tooltip="Add an entry" aria-label="Add entry"><i class="fa-solid fa-plus"></i></span>
         {{/if}}

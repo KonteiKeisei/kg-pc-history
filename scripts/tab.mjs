@@ -121,6 +121,7 @@ function entryView(e, classColors) {
     edited: !!e.editedBy,
     levelApprox: !!e.levelApprox,
     levelKey: levelKey(e.level),
+    key: e.key,
     classId: anchorId,
     classColor: anchorId ? (classColors.get(anchorId) ?? 0) : null,
     search: [e.label, e.detail, src, e.note, cat.label, who, e.anchor?.className].filter(Boolean).join(" ").toLowerCase()
@@ -282,14 +283,29 @@ function buildContext(actor, view) {
   }
 
   let cardList = [...cards.values()].map(c => {
+    // Unsorted entries have no level to group by, so the sheet's own organization is the next best thing: the custom
+    // section the item sits in on Tidy 5e. Entries without one fall back to their category row.
+    const bySection = new Map();
     const byCat = new Map();
     for ( const v of c.entries ) {
+      const section = (c.key === "none") ? tidySection(actor, v.key) : "";
+      if ( section ) {
+        if ( !bySection.has(section) ) bySection.set(section, []);
+        bySection.get(section).push(v);
+        v.search = `${v.search} ${section.toLowerCase()}`;
+        continue;
+      }
       if ( !byCat.has(v.category) ) byCat.set(v.category, []);
       byCat.get(v.category).push(v);
     }
-    const rows = ROW_ORDER.filter(id => byCat.has(id)).map(id => ({
-      id, label: CATEGORIES[id].label, icon: CATEGORIES[id].icon, chips: byCat.get(id)
-    }));
+    const rows = [
+      ...[...bySection].sort(([a], [b]) => a.localeCompare(b)).map(([section, chips]) => ({
+        id: chips[0].category, label: section, icon: "fa-solid fa-table-list", chips
+      })),
+      ...ROW_ORDER.filter(id => byCat.has(id)).map(id => ({
+        id, label: CATEGORIES[id].label, icon: CATEGORIES[id].icon, chips: byCat.get(id)
+      }))
+    ];
     const tags = [...c.tags.values()].sort((a, b) => a.classLevel - b.classLevel);
     return {
       key: c.key, label: c.label, tags, rows,
@@ -399,7 +415,11 @@ function renderKey(actor) {
   ];
   const src = actor._source?.system?.abilities ?? {};
   for ( const a of ABILITIES ) parts.push(actor.system?.abilities?.[a]?.value, src[a]?.value);
-  for ( const i of actor.items ) if ( i.type === "class" ) parts.push(i.id, i.name, i.system?.levels);
+  for ( const i of actor.items ) {
+    if ( i.type === "class" ) parts.push(i.id, i.name, i.system?.levels);
+    // Unsorted entries are grouped by Tidy section, so a section change re-renders.
+    else if ( i.type === "feat" ) parts.push(i.flags?.["tidy5e-sheet"]?.section ?? "");
+  }
   try {
     for ( const e of actor.allApplicableEffects?.() ?? actor.effects ) {
       parts.push(e.id, e.active ? 1 : 0, e.name, e.duration?.remaining ?? "");
@@ -683,16 +703,22 @@ async function onAction(el, root, actor, view) {
       return;
     }
     case "edit-generation":
+      if ( !game.user.isGM || !state.unlocked ) return;
+      relock(root, actor);
       return GenerationEditor.open(actor, view.generation);
     case "reset-generation":
-      if ( await confirmTyped({
-        title: "Reset Ability Generation",
-        phrase: "RESET",
-        icon: "fa-solid fa-rotate-left",
-        label: "Reset",
-        content: `<p>Clear ${esc(actor.name)}'s ability generation record so the player can generate scores again?</p>`
-          + "<p>Ability scores on the sheet are not changed. The old record is gone, but the reset is noted in the history.</p>"
-      }) ) reportResults(await submit(actor, [{ type: "resetGeneration" }]));
+      if ( !game.user.isGM || !state.unlocked ) return;
+      try {
+        if ( await confirmTyped({
+          title: "Reset Ability Generation",
+          phrase: "RESET",
+          icon: "fa-solid fa-rotate-left",
+          label: "Reset",
+          content: `<p>Clear ${esc(actor.name)}'s ability generation record so the player can generate scores again?</p>`
+            + "<p>Ability scores on the sheet are not changed. The old record is gone, but the reset is noted in the history.</p>"
+        }) ) reportResults(await submit(actor, [{ type: "resetGeneration" }]));
+      }
+      finally { relock(root, actor); }
       return;
     case "unlock-repair":
       if ( !game.user.isGM ) return;
@@ -705,7 +731,8 @@ async function onAction(el, root, actor, view) {
         classes: ["kg-pch"],
         content: `<p>Unlock the repair tools for ${esc(actor.name)}'s history?</p>`
           + "<p>Rebuild adds entries worked out from the character's items, and its Start over option deletes recorded "
-          + "history. Use them only to repair a character whose history is missing or wrong.</p>"
+          + "history. The ability score record can be edited or reset. Use them only to repair a character whose "
+          + "history is missing or wrong.</p>"
           + "<p class=\"hint\">The tools lock again after one use, or when the world reloads.</p>",
         yes: { label: "Unlock", icon: "fa-solid fa-lock-open" },
         no: { label: "Keep Locked", icon: "fa-solid fa-lock", default: true },
@@ -718,10 +745,7 @@ async function onAction(el, root, actor, view) {
     case "rebuild":
       if ( !game.user.isGM || !state.unlocked ) return;
       try { return await rebuild(actor, view); }
-      finally {
-        state.unlocked = false;
-        renderHistory(root, actor);
-      }
+      finally { relock(root, actor); }
   }
 }
 
@@ -831,6 +855,20 @@ async function rebuild(actor, view) {
   if ( plan.places.length ) ops.push({ type: "placeEntries", places: plan.places });
   if ( inferred && choice.infer ) ops.push({ type: "setGeneration", generation: inferred });
   if ( ops.length ) reportResults(await submit(actor, ops));
+}
+
+/** The custom Tidy 5e section of the item an entry is about, if it has one. */
+function tidySection(actor, key) {
+  const [t, id] = String(key ?? "").split(":");
+  if ( t !== "item" ) return "";
+  const flags = actor.items.get(id)?.flags?.["tidy5e-sheet"];
+  return String(flags?.section || flags?.actionSection || "").trim();
+}
+
+/** Lock the repair tools again after one use. */
+function relock(root, actor) {
+  stateFor(actor).unlocked = false;
+  renderHistory(root, actor);
 }
 
 /** The "Start over" checkbox. */

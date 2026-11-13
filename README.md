@@ -39,8 +39,9 @@ module settings. History tracking works either way.
 - Rebuild an older character's history from the advancement choices dnd5e stores on its items. If it has no
   generation record, Rebuild can work out its base scores (sheet scores minus advancement increases) and guess the
   method. The record is marked Inferred until the GM confirms it. Start over clears the module's own entries and
-  rebuilds from scratch, for a character whose class, species or background was replaced. Rebuild is locked until
-  the GM unlocks it with the padlock on the History tab, and locks again after one use.
+  rebuilds from scratch, for a character whose class, species or background was replaced. Rebuild and the ability
+  score record's edit and reset are locked until the GM unlocks them with the padlock on the History tab, and lock
+  again after one use. Entries Rebuild cannot place are grouped by their Tidy 5e section, if they have one.
 - Set the class order of a multiclass character, which dnd5e does not record.
 
 ## Settings

@@ -119,7 +119,12 @@
           {{#if multiclass}}
             <span role="button" tabindex="0" class="kg-pch-icon{{#unless orderSet}} attention{{/unless}}" data-kg-action="class-order" data-tooltip="{{#if orderSet}}Class order{{else}}Set the class order (which level each class was taken at){{/if}}" aria-label="Class order"><i class="fa-solid fa-layer-group"></i></span>
           {{/if}}
-          <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="rebuild" data-tooltip="Rebuild from the advancements stored on this character" aria-label="Rebuild from advancements"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+          {{#if repairUnlocked}}
+            <span role="button" tabindex="0" class="kg-pch-icon attention" data-kg-action="rebuild" data-tooltip="Rebuild from the advancements stored on this character" aria-label="Rebuild from advancements"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+            <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="unlock-repair" data-tooltip="Lock the repair tools" aria-label="Lock repair tools"><i class="fa-solid fa-lock-open"></i></span>
+          {{else}}
+            <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="unlock-repair" data-tooltip="History repair is locked. Click to unlock Rebuild for this character." aria-label="Unlock repair tools"><i class="fa-solid fa-lock"></i></span>
+          {{/if}}
           <span role="button" tabindex="0" class="kg-pch-icon" data-kg-action="add" data-tooltip="Add an entry" aria-label="Add entry"><i class="fa-solid fa-plus"></i></span>
         {{/if}}
       </div>

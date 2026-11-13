@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.6
+
+- Rebuild is locked by default. The GM unlocks it per character with the padlock on the History tab and a
+  confirmation; it locks again after one use or a reload.
+- Start over now removes every entry the module recorded on its own (level-ups, sheet edits, earlier rebuilds) and
+  rebuilds from the sheet, so a swapped class or species no longer leaves duplicates behind. GM entries, notes, edited
+  entries and the generation record stay; an edited entry for a replaced item is moved to the current item of the
+  same name. It asks you to type START OVER first.
+- Rebuild no longer adds a second copy of an item already in the history at another level, such as a feat the GM
+  placed by hand.
+
 ## 1.0.5
 
 - Rebuild has a Start over option for characters whose class, species or background was replaced. It removes entries

@@ -3,7 +3,9 @@ import {
   levelFromSource, renderTemplate, setting, signed, userName, validClassOrder
 } from "./util.mjs";
 import { anyModeAllowed, inferGeneration, keptSets, methodLabel, rerollState } from "./methods.mjs";
-import { getPending, getStore, loadView, reportResults, startOverIds, submit } from "./store.mjs";
+import {
+  getPending, getStore, loadView, rebuildPlan, rekeyPlan, reportResults, startOverIds, submit
+} from "./store.mjs";
 import { rebuildEntries } from "./tracking.mjs";
 import { GenerationApp } from "./apps/generation-app.mjs";
 import { EntryEditor } from "./apps/entry-editor.mjs";
@@ -20,7 +22,9 @@ function stateFor(actor) {
   if ( !s ) {
     states.set(actor.uuid, s = {
       cats: new Set(), classes: new Set(), level: "", text: "", desc: false, scroll: 0,
-      expanded: new Set(), ability: null
+      // History repair (Rebuild, Start over) stays locked until the GM unlocks it for this character, and locks again
+      // after one use or a reload, so it cannot be clicked through by accident.
+      expanded: new Set(), ability: null, unlocked: false
     });
   }
   return s;
@@ -321,6 +325,7 @@ function buildContext(actor, view) {
     hasEntries: sorted.length > 0,
     total: sorted.length,
     desc: state.desc,
+    repairUnlocked: !!state.unlocked,
     text: state.text,
     multiclass,
     orderSet,
@@ -389,6 +394,7 @@ function renderKey(actor) {
   const parts = [
     store.file ?? "", store.rev ?? 0, getPending(actor).length, game.user.isGM ? 1 : 0, anyModeAllowed() ? 1 : 0,
     [...s.cats].join(","), [...s.classes].join(","), s.level, s.text, s.desc ? 1 : 0, [...s.expanded].join(","), s.ability ?? "",
+    s.unlocked ? 1 : 0,
     actor.system?.details?.originalClass ?? ""
   ];
   const src = actor._source?.system?.abilities ?? {};
@@ -688,8 +694,34 @@ async function onAction(el, root, actor, view) {
           + "<p>Ability scores on the sheet are not changed. The old record is gone, but the reset is noted in the history.</p>"
       }) ) reportResults(await submit(actor, [{ type: "resetGeneration" }]));
       return;
+    case "unlock-repair":
+      if ( !game.user.isGM ) return;
+      if ( state.unlocked ) {
+        state.unlocked = false;
+        return renderHistory(root, actor);
+      }
+      if ( await DialogV2.confirm({
+        window: { title: "Unlock History Repair", icon: "fa-solid fa-lock-open" },
+        classes: ["kg-pch"],
+        content: `<p>Unlock the repair tools for ${esc(actor.name)}'s history?</p>`
+          + "<p>Rebuild adds entries worked out from the character's items, and its Start over option deletes recorded "
+          + "history. Use them only to repair a character whose history is missing or wrong.</p>"
+          + "<p class=\"hint\">The tools lock again after one use, or when the world reloads.</p>",
+        yes: { label: "Unlock", icon: "fa-solid fa-lock-open" },
+        no: { label: "Keep Locked", icon: "fa-solid fa-lock", default: true },
+        rejectClose: false
+      }) ) {
+        state.unlocked = true;
+        return renderHistory(root, actor);
+      }
+      return;
     case "rebuild":
-      return rebuild(actor, view);
+      if ( !game.user.isGM || !state.unlocked ) return;
+      try { return await rebuild(actor, view); }
+      finally {
+        state.unlocked = false;
+        renderHistory(root, actor);
+      }
   }
 }
 
@@ -728,35 +760,19 @@ async function confirmTyped({ title, content, phrase, label, icon }) {
   return result === true;
 }
 
-/**
- * What a rebuild would do against `existing`: fresh entries to add, and earlier unplaced rebuilt entries to move to the
- * level this rebuild found (instead of adding a duplicate).
- */
-function rebuildPlan(fresh, existing) {
-  const unplaced = new Map(existing
-    .filter(e => e.key && (e.origin === "reconstructed") && ((e.level === null) || (e.level === undefined)))
-    .map(e => [e.key, e]));
-  const places = [];
-  const placedKeys = new Set();
-  for ( const e of fresh ) {
-    const old = unplaced.get(e.key);
-    if ( !old || (e.level === null) || (e.level === undefined) || placedKeys.has(e.key) ) continue;
-    places.push({ entryId: old.id, level: e.level, source: e.source, anchor: e.anchor ?? null, levelApprox: !!e.levelApprox });
-    placedKeys.add(e.key);
-  }
-  const have = new Set(existing.map(e => `${e.key}|${e.level ?? ""}`));
-  const entries = fresh.filter(e => !e.key || (!have.has(`${e.key}|${e.level ?? ""}`) && !placedKeys.has(e.key)));
-  return { entries, places };
-}
-
 async function rebuild(actor, view) {
   const order = validClassOrder(actor, view.classOrder) ? view.classOrder : null;
   const fresh = await rebuildEntries(actor, { order });
   const { entries, places } = rebuildPlan(fresh, view.entries);
-  // Start over: drop earlier rebuilt entries and anything tied to a class, species or background no longer on the
-  // character, then rebuild against what is left.
-  const stale = new Set(startOverIds(view.entries, id => actor.items.has(id)));
-  const restart = stale.size ? rebuildPlan(fresh, view.entries.filter(e => !stale.has(e.id))) : null;
+  // Start over: drop every automatic entry, re-point kept entries at replaced items, then rebuild against what is left.
+  const stale = new Set(startOverIds(view.entries));
+  let restart = null;
+  if ( stale.size ) {
+    const kept = view.entries.filter(e => !stale.has(e.id)).map(e => ({ ...e }));
+    const rekeys = rekeyPlan(kept, actor.items.map(i => ({ id: i.id, name: i.name })));
+    for ( const r of rekeys ) kept.find(e => e.id === r.entryId).key = r.key;
+    restart = { ...rebuildPlan(fresh, kept), rekeys };
+  }
   const inferred = view.generation ? null : inferGeneration(actor);
   if ( !entries.length && !places.length && !inferred && !stale.size ) {
     ui.notifications.info("PC History: nothing to add. Every advancement on this character is already in its history.");
@@ -799,36 +815,34 @@ async function rebuild(actor, view) {
     rejectClose: false
   });
   if ( !choice || (choice === "cancel") ) return;
+  if ( choice.restart && stale.size && !(await confirmTyped({
+    title: "Start Over",
+    icon: "fa-solid fa-trash",
+    label: "Delete and Rebuild",
+    phrase: "START OVER",
+    content: `<p>Delete ${stale.size} recorded entries from ${esc(actor.name)}'s history and rebuild it from the sheet? `
+      + "This cannot be undone.</p>"
+  })) ) return;
   const plan = (choice.restart && restart) ? restart : { entries, places };
   const ops = [];
   if ( choice.restart && stale.size ) ops.push({ type: "deleteEntries", entryIds: [...stale] });
+  if ( choice.restart && restart?.rekeys.length ) ops.push({ type: "rekeyEntries", rekeys: restart.rekeys });
   if ( plan.entries.length ) ops.push({ type: "append", entries: plan.entries });
   if ( plan.places.length ) ops.push({ type: "placeEntries", places: plan.places });
   if ( inferred && choice.infer ) ops.push({ type: "setGeneration", generation: inferred });
   if ( ops.length ) reportResults(await submit(actor, ops));
 }
 
-/** The "Start over" checkbox, naming the classes, species and backgrounds the character no longer has. */
+/** The "Start over" checkbox. */
 function restartHTML(actor, view, stale) {
   if ( !stale.size ) return "";
-  const gone = new Set();
-  let rebuilt = 0;
-  for ( const e of view.entries ) {
-    if ( !stale.has(e.id) ) continue;
-    if ( e.origin === "reconstructed" ) rebuilt++;
-    if ( e.anchor?.classId && !actor.items.has(e.anchor.classId) ) gone.add(e.anchor.className);
-    if ( e.source?.id && ["class", "subclass", "race", "background"].includes(e.source.type) && !actor.items.has(e.source.id) ) {
-      gone.add(e.source.name);
-    }
-  }
-  const parts = [];
-  if ( rebuilt ) parts.push(`${rebuilt} made by earlier rebuilds`);
-  const names = [...gone].filter(Boolean).map(esc);
-  if ( names.length ) parts.push(`anything from the ${names.join(", ")} items the character no longer has`);
+  const kept = view.entries.length - stale.size;
   return `<label class="kg-pch-check kg-pch-infer"><input type="checkbox" name="kgRestart"><span>`
-    + `<strong>Start over:</strong> remove ${stale.size} entries first${parts.length ? `: ${parts.join("; ")}` : ""}.</span></label>`
-    + "<p class=\"hint\">For a character whose class, species or background was replaced. GM entries, notes, edited "
-    + "entries and the generation record are kept. This cannot be undone.</p>";
+    + `<strong>Start over:</strong> remove the ${stale.size} entries the module recorded on its own (level-ups, sheet `
+    + `edits and earlier rebuilds) and rebuild from ${esc(actor.name)}'s sheet as it is now.</span></label>`
+    + `<p class="hint">For a character whose class, species or background was replaced, or whose history is a mess. `
+    + `${kept ? `The ${kept} GM entries, notes, edited entries and generation records stay.` : "Nothing else is kept."} `
+    + "Who made each choice and when is lost for the removed entries. This cannot be undone.</p>";
 }
 
 function inferredMethodText(gen) {

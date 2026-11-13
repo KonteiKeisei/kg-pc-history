@@ -14,7 +14,7 @@ import {
  */
 
 const SOCKET = `module.${MODULE_ID}`;
-const GM_ONLY = new Set(["updateEntry", "deleteEntry", "deleteEntries", "placeEntries", "setGeneration", "resetGeneration", "setClassOrder"]);
+const GM_ONLY = new Set(["updateEntry", "deleteEntry", "deleteEntries", "rekeyEntries", "placeEntries", "setGeneration", "resetGeneration", "setClassOrder"]);
 const APPLIED_CAP = 400;
 const REQUEST_TIMEOUT = 15000;
 const FLUSH_DELAY = 120;
@@ -42,25 +42,67 @@ export function makeEntry(data={}) {
   };
 }
 
-const ORIGIN_TYPES = new Set(["class", "subclass", "race", "background"]);
+/** Entries a person made or touched: GM entries, notes, the generation record, and anything the GM edited. */
+function isKept(e) {
+  return !!e.editedBy || (e.origin === "gm") || ["note", "generation"].includes(e.category);
+}
 
 /**
- * What Rebuild's "Start over" removes: entries an earlier rebuild made, and entries tied to a class, subclass, species or
- * background the character no longer has (it was deleted or swapped for a new copy). Never removes GM entries, notes,
- * generation records or anything the GM edited.
- * @param {object[]} entries
- * @param {(id: string) => boolean} hasItem  whether the character still has an item with this id
+ * What Rebuild's "Start over" removes: every entry the module recorded on its own (live level-ups, sheet edits, earlier
+ * rebuilds), so the history is rebuilt from the character as it is now. A swapped class or species leaves entries for
+ * features that were granted and then deleted, and its undo steps carry no source, so nothing short of this cleans it.
+ * GM entries, notes, the generation record and anything the GM edited stay.
  */
-export function startOverIds(entries, hasItem) {
-  const gone = id => !!id && !hasItem(id);
-  return entries.filter(e => {
-    if ( e.editedBy || (e.origin === "gm") || ["note", "generation"].includes(e.category) ) return false;
-    if ( e.origin === "reconstructed" ) return true;
-    if ( gone(e.anchor?.classId) ) return true;
-    if ( ORIGIN_TYPES.has(e.source?.type) && gone(e.source?.id) ) return true;
+export function startOverIds(entries) {
+  return entries.filter(e => !isKept(e)).map(e => e.id);
+}
+
+/**
+ * Kept entries that point at an item the character no longer has (a GM-placed feature whose item was later swapped for
+ * a new copy) are re-pointed at the current item of the same name, so a rebuild sees them as recorded.
+ * @param {object[]} entries  the entries that stay
+ * @param {{id: string, name: string}[]} items  the character's items
+ * @returns {{entryId: string, key: string}[]}
+ */
+export function rekeyPlan(entries, items) {
+  const ids = new Set(items.map(i => i.id));
+  const claimed = new Set(entries.map(e => e.key).filter(k => String(k).startsWith("item:") && ids.has(k.slice(5))));
+  const out = [];
+  for ( const e of entries ) {
     const [t, id] = String(e.key ?? "").split(":");
-    return (e.category === "class") && ["item", "classLevel"].includes(t) && gone(id);
-  }).map(e => e.id);
+    if ( (t !== "item") || ids.has(id) || e.removed ) continue;
+    const name = String(e.label ?? "").split(": ").slice(1).join(": ").trim().toLowerCase();
+    const match = name && items.find(i => !claimed.has(`item:${i.id}`) && (String(i.name).trim().toLowerCase() === name));
+    if ( !match ) continue;
+    claimed.add(`item:${match.id}`);
+    out.push({ entryId: e.id, key: `item:${match.id}` });
+  }
+  return out;
+}
+
+/**
+ * What a rebuild adds against `existing`: fresh entries not already recorded, and earlier unplaced rebuilt entries to
+ * move to the level this rebuild found (instead of adding a duplicate). An item is gained once, so an item recorded as
+ * added at any level counts as recorded (a GM may have moved it), as does anything this rebuild cannot place.
+ */
+export function rebuildPlan(fresh, existing) {
+  const unplaced = new Map(existing
+    .filter(e => e.key && (e.origin === "reconstructed") && ((e.level === null) || (e.level === undefined)))
+    .map(e => [e.key, e]));
+  const places = [];
+  const placedKeys = new Set();
+  for ( const e of fresh ) {
+    const old = unplaced.get(e.key);
+    if ( !old || (e.level === null) || (e.level === undefined) || placedKeys.has(e.key) ) continue;
+    places.push({ entryId: old.id, level: e.level, source: e.source, anchor: e.anchor ?? null, levelApprox: !!e.levelApprox });
+    placedKeys.add(e.key);
+  }
+  const have = new Set(existing.map(e => `${e.key}|${e.level ?? ""}`));
+  const anyLevel = new Set(existing.filter(e => !e.removed).map(e => e.key));
+  const recorded = e => have.has(`${e.key}|${e.level ?? ""}`)
+    || (anyLevel.has(e.key) && (String(e.key).startsWith("item:") || (e.level === null) || (e.level === undefined)));
+  const entries = fresh.filter(e => !e.key || (!recorded(e) && !placedKeys.has(e.key)));
+  return { entries, places };
 }
 
 const EDITABLE =["label", "detail", "category", "level", "note", "source"];
@@ -178,6 +220,12 @@ export function applyOp(data, op, { isGM=false, strict=false }={}) {
       data.entries = data.entries.filter(e => !ids.has(e.id));
       break;
     }
+    case "rekeyEntries":
+      for ( const r of op.rekeys ?? [] ) {
+        const entry = data.entries.find(e => e.id === r.entryId);
+        if ( entry && String(r.key).startsWith("item:") ) entry.key = r.key;
+      }
+      break;
     case "placeEntries":
       // Rebuild found where earlier rebuilt entries with no level belong. Only those are moved.
       for ( const p of op.places ?? [] ) {

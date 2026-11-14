@@ -3,7 +3,7 @@
 A History tab for dnd5e characters: how their ability scores were generated, and what every level, species,
 background and feat changed.
 
-Foundry v13 with dnd5e 5.3.3+, and Foundry v14 with dnd5e 6.x. Works on the default character sheet and on Tidy 5e.
+Tested on Foundry v13 with dnd5e 5.3.3 and Foundry v14 with dnd5e 6.x, on the default character sheet and on Tidy 5e.
 
 ![History tab on the default dnd5e character sheet](docs/history-dnd5e-sheet.webp)
 
@@ -20,7 +20,8 @@ module settings. History tracking works either way.
   3d6 in order, 2d6+6, 5d6 keep 3.
 - Rolls are made on the GM's client and saved before the player assigns them. The GM sets how many rerolls are
   allowed; discarded sets stay on record.
-- Once recorded, only the GM can change the scores. Resetting them requires typing RESET.
+- Once recorded, only the GM can change the record. Resetting it requires typing RESET. The scores on the sheet
+  stay editable as usual; a change there is recorded as a hand edit.
 
 ## History
 
@@ -63,8 +64,9 @@ Each character has one small flag pointing to `worlds/<world>/pc-history/<actorI
 writes these files; players' changes go through the GM. With no GM online, changes wait on the character and are
 written when a GM logs in.
 
-History files do not travel with characters exported to a compendium or another world. Include the `pc-history`
-folder in world backups.
+History files do not travel with characters exported to a compendium or another world, and stay in the folder when
+a character is deleted. Anyone with a file's address can read it, even with Players See the History Tab off.
+Include the `pc-history` folder in world backups.
 
 ## Install
 

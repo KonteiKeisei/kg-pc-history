@@ -6,7 +6,7 @@
         <div class="kg-pch-score-cell" data-tooltip="{{label}}"><span class="abbr">{{abbr}}</span><span class="val">{{base}}</span></div>
       {{/each}}
     </div>
-    <p class="kg-pch-hint">{{#if isGM}}To change them, use Edit or Reset in the Ability Generation section of the History tab.{{else}}Only the GM can change recorded scores.{{/if}}</p>
+    <p class="kg-pch-hint">{{#if isGM}}To change them, unlock the Ability Scores card on the History tab with its padlock, then use Edit or Reset.{{else}}Only the GM can change recorded scores.{{/if}}</p>
   {{else if noModes}}
     <p class="kg-pch-lead">The GM has not allowed any way to generate ability scores.</p>
   {{else}}

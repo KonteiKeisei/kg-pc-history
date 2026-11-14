@@ -365,15 +365,25 @@ function onPreUpdateActor(actor, changes, options, userId) {
   const entries = atoms.map((a, i) => makeEntry({
     ...describeAtom(a), level, origin: "manual", user: user.id, seq: i, source: editSource(user, via)
   }));
-  manualQueue.set(actor.uuid, [...(manualQueue.get(actor.uuid) ?? []), ...entries]);
+  // Keyed to this one update: if it is refused after this hook, its entries expire instead of riding on the next.
+  const token = foundry.utils.randomID();
+  options.kgPchManual = token;
+  manualQueue.set(token, { actor: actor.uuid, entries });
+  setTimeout(() => manualQueue.delete(token), 60000);
 }
 
 function onUpdateActor(actor, changes, options, userId) {
   if ( userId !== game.user.id ) return;
-  const entries = manualQueue.get(actor.uuid);
-  if ( !entries?.length ) return;
-  manualQueue.delete(actor.uuid);
-  submit(actor, [{ type: "append", entries }]).then(reportResults);
+  // The token normally comes back with the update's options. Only if it did not, and this update did change a tracked
+  // field, fall back to this actor's oldest waiting edit; an unrelated update (hit points) never picks one up.
+  let token = options?.kgPchManual;
+  if ( !token && TRACKED_SYSTEM.some(k => changes?.system?.[k] !== undefined) ) {
+    token = [...manualQueue].find(([, q]) => q.actor === actor.uuid)?.[0];
+  }
+  const queued = token ? manualQueue.get(token) : null;
+  if ( !queued?.entries.length ) return;
+  manualQueue.delete(token);
+  submit(actor, [{ type: "append", entries: queued.entries }]).then(reportResults);
 }
 
 function queueItemEntry(actor, entry) {

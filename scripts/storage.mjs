@@ -19,8 +19,17 @@ export function historyDir() {
   return `worlds/${game.world.id}/pc-history`;
 }
 
+/**
+ * The character's own history file. Lowercase, because some servers lowercase uploaded file names: on a case-sensitive
+ * file system a mixed-case path would then never find the file it just wrote. Files from earlier versions keep their
+ * mixed-case name and are still read through the link, then rewritten here on the next save.
+ */
+export function fileName(actor) {
+  return `${actor.id.toLowerCase()}.json`;
+}
+
 export function canonicalPath(actor) {
-  return `${historyDir()}/${actor.id}.json`;
+  return `${historyDir()}/${fileName(actor)}`;
 }
 
 export function getStore(actor) {
@@ -55,32 +64,54 @@ function filePicker() {
  * A file that exists but cannot be read comes back with `_loadError` set and is not cached, so the GM never
  * overwrites real history with an empty file after a network hiccup.
  */
-export async function loadData(actor) {
+export async function loadData(actor, { fresh=false }={}) {
   const s = getStore(actor);
-  if ( !s.file ) return emptyData(actor);
-  const key = `${s.file}@${Number(s.rev) || 0}`;
-  const hit = cache.get(actor.uuid);
-  if ( hit?.key === key ) return hit.data;
-  if ( inflight.has(key) ) return inflight.get(key);
+  // The character's own file comes first, whatever the link says. The link can be lost or point elsewhere (Import
+  // Data replaces the whole actor, flags included), and treating that as "no history" would overwrite the real file
+  // on the next save. The linked file is the fallback: a copied character reads its original's history once, before
+  // it gets its own file.
+  const own = canonicalPath(actor);
+  const paths = [...new Set([own, s.file].filter(Boolean))];
+  const rev = Number(s.rev) || 0;
+  const key = `${paths.join("|")}@${rev}`;
+  if ( !fresh ) {
+    const hit = cache.get(actor.uuid);
+    if ( hit?.key === key ) return hit.data;
+    if ( inflight.has(key) ) return inflight.get(key);
+  }
 
   const promise = (async () => {
     let data = null;
     let failed = false;
-    try {
-      const res = await fetch(`${foundry.utils.getRoute(s.file)}?rev=${Number(s.rev) || 0}`);
-      if ( res.ok ) data = await res.json();
-      else if ( res.status !== 404 ) failed = true;
-      else warn(`History file ${s.file} for ${actor.name} is missing; starting a new one.`);
-    } catch(err) {
-      failed = true;
-      warn(`Could not read ${s.file}`, err);
+    for ( const path of paths ) {
+      try {
+        // Writers read past the browser cache, so a stale copy is never the base of a new save.
+        const res = await fetch(`${foundry.utils.getRoute(path)}?rev=${rev}`, fresh ? { cache: "no-cache" } : undefined);
+        if ( res.ok ) {
+          data = await res.json();
+          if ( s.file && (path.toLowerCase() !== s.file.toLowerCase()) ) {
+            warn(`${actor.name}'s history link pointed elsewhere; using ${path}.`);
+          }
+          break;
+        }
+        // Only an unreadable *linked* file stops a save. The character's own file is probed even with no link, and
+        // a host may answer a missing file with something other than 404, so for the probe any refusal means "none".
+        if ( (res.status !== 404) && (path === s.file) ) {
+          failed = true;
+          break;
+        }
+      } catch(err) {
+        failed = true;
+        warn(`Could not read ${path}`, err);
+        break;
+      }
     }
     data = normalize(data, actor);
     if ( failed ) data._loadError = true;
     else cache.set(actor.uuid, { key, data });
     return data;
-  })().finally(() => inflight.delete(key));
-  inflight.set(key, promise);
+  })().finally(() => { if ( inflight.get(key) === promise ) inflight.delete(key); });
+  if ( !fresh ) inflight.set(key, promise);
   return promise;
 }
 
@@ -111,14 +142,16 @@ async function ensureDir() {
 export async function writeData(actor, data, actorUpdates={}) {
   await ensureDir();
   const FP = filePicker();
-  const rev = (Number(getStore(actor).rev) || 0) + 1;
+  // Past both the link's revision and the file's own: an imported actor can carry an older revision, and reusing a
+  // number other clients have already cached would leave them showing the old history.
+  const rev = Math.max(Number(getStore(actor).rev) || 0, Number(data?.rev) || 0) + 1;
   const path = canonicalPath(actor);
   const out = { ...data };
   delete out._loadError;
   Object.assign(out, {
     version: 1, actorId: actor.id, actorName: actor.name, world: game.world.id, rev, updated: Date.now()
   });
-  const file = new File([JSON.stringify(out)], `${actor.id}.json`, { type: "application/json" });
+  const file = new File([JSON.stringify(out)], fileName(actor), { type: "application/json" });
   const res = await FP.upload("data", historyDir(), file, {}, { notify: false });
   if ( !res || (res.status && (res.status !== "success")) ) {
     throw new Error(res?.message ?? `Could not write ${path}`);

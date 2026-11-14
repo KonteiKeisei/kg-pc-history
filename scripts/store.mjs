@@ -105,6 +105,19 @@ export function rebuildPlan(fresh, existing) {
   return { entries, places };
 }
 
+/**
+ * An entry added by a player, made safe to store: it is credited to the player who sent it, and it cannot pass as
+ * the GM's work (a GM entry, an edited entry, a note or a generation record), which Start over would keep.
+ */
+function playerEntry(e, op) {
+  const out = { ...e, user: op.user };
+  delete out.editedBy;
+  delete out.editedAt;
+  if ( !["advancement", "manual"].includes(out.origin) ) out.origin = "manual";
+  if ( ["note", "generation"].includes(out.category) ) out.category = "other";
+  return out;
+}
+
 const EDITABLE =["label", "detail", "category", "level", "note", "source"];
 
 function entryPatch(data={}) {
@@ -200,8 +213,8 @@ export function applyOp(data, op, { isGM=false, strict=false }={}) {
     case "append": {
       const have = new Set(data.entries.map(e => e.id));
       for ( const e of op.entries ?? [] ) {
-        if ( !e?.id || have.has(e.id) ) continue;
-        data.entries.push(e);
+        if ( !e?.id || (typeof e !== "object") || have.has(e.id) ) continue;
+        data.entries.push(isGM ? e : playerEntry(e, op));
         have.add(e.id);
       }
       break;
@@ -350,7 +363,8 @@ export async function loadView(actor) {
   const view = foundry.utils.deepClone(data);
   for ( const op of pending ) {
     try {
-      applyOp(view, op, { isGM: !!game.users.get(op.user)?.isGM });
+      // Queued operations were written by a player, so they never preview with GM rights.
+      applyOp(view, op, { isGM: false });
     } catch(err) { /* lenient */ }
   }
   view.pendingCount = pending.length;
@@ -421,11 +435,16 @@ function enqueueGM(actor, op, source) {
   });
 }
 
+/**
+ * GM rights come from where an operation arrived, never from the `user` field inside it: the active GM's own client
+ * ("local") and a verified GM sender ("socket-gm") have them. Player requests ("socket") and anything from the pending
+ * queue ("pending", written into the actor flag by a player while no GM was online) never do.
+ */
 async function prepareOp(actor, op, source) {
   const user = game.users.get(op.user);
-  const isGM = !!user?.isGM;
+  const isGM = ["local", "socket-gm"].includes(source) && !!user?.isGM;
   const result = { op: foundry.utils.deepClone(op), updates: {}, after: [] };
-  if ( (op.type === "rolled") && (source === "socket") && !isGM ) throw new Error("Rolls are made on the GM's client.");
+  if ( (op.type === "rolled") && (source === "socket") ) throw new Error("Rolls are made on the GM's client.");
   if ( (op.type === "rolled") && (source === "pending") ) result.op.verified = false;
   if ( op.type === "roll" ) {
     const res = await rollSets(op.methodId);
@@ -449,7 +468,7 @@ async function flushGM(uuid) {
     const finish = r => q.items.forEach(it => it.resolve(typeof r === "function" ? r(it) : r));
     let data;
     try {
-      data = foundry.utils.deepClone(await loadData(actor));
+      data = foundry.utils.deepClone(await loadData(actor, { fresh: true }));
       if ( data._loadError ) throw new Error("The history file could not be read, so nothing was written. Try again.");
     } catch(err) {
       finish({ ok: false, error: err.message });
@@ -463,9 +482,13 @@ async function flushGM(uuid) {
     for ( const it of q.items ) {
       try {
         const prepared = await prepareOp(actor, it.op, it.source);
-        changed = applyOp(data, prepared.op, { isGM: prepared.isGM, strict: true }) || changed;
-        Object.assign(actorUpdates, prepared.updates);
-        after.push(...prepared.after);
+        // An operation can arrive twice (over the socket, then again from the pending queue after a timeout). The
+        // second copy changes nothing in the file, and must not repeat its side effects (ability scores, chat card).
+        if ( applyOp(data, prepared.op, { isGM: prepared.isGM, strict: true }) ) {
+          changed = true;
+          Object.assign(actorUpdates, prepared.updates);
+          after.push(...prepared.after);
+        }
         results.set(it, { ok: true });
       } catch(err) {
         results.set(it, { ok: false, error: err.message });
@@ -521,20 +544,29 @@ function requestGM(actor, ops) {
   });
 }
 
-async function onSocket(msg) {
+/**
+ * The server passes the sending user's id as the second argument; that is the only trustworthy identity. The `userId`
+ * inside the message is written by the sender and is used only to address the reply. Should a server ever not pass
+ * the sender, the request is still handled, but never with GM rights.
+ */
+async function onSocket(msg, senderId) {
   if ( msg?.type === "response" ) {
     if ( msg.userId === game.user.id ) waiters.get(msg.requestId)?.(msg.results);
     return;
   }
   if ( (msg?.type !== "request") || !isActiveGM() ) return;
-  const user = game.users.get(msg.userId);
+  const verified = !!senderId;
+  const user = game.users.get(verified ? senderId : msg.userId);
   const actor = await fromUuid(msg.actorUuid).catch(() => null);
+  const owner = !!user && !!actor && isCharacter(actor)
+    && (verified ? actor.testUserPermission(user, "OWNER") : (!user.isGM && actor.testUserPermission(user, "OWNER")));
   let results;
-  if ( !user || !actor || !isCharacter(actor) || !actor.testUserPermission(user, "OWNER") ) {
-    results = (msg.ops ?? []).map(() => ({ ok: false, error: "You do not own that character." }));
+  if ( !owner ) results = (msg.ops ?? []).map(() => ({ ok: false, error: "You do not own that character." }));
+  else {
+    const source = (verified && user.isGM) ? "socket-gm" : "socket";
+    results = await Promise.all((msg.ops ?? []).map(op => enqueueGM(actor, { ...op, user: user.id }, source)));
   }
-  else results = await Promise.all((msg.ops ?? []).map(op => enqueueGM(actor, { ...op, user: user.id }, "socket")));
-  game.socket.emit(SOCKET, { type: "response", requestId: msg.requestId, userId: msg.userId, results });
+  game.socket.emit(SOCKET, { type: "response", requestId: msg.requestId, userId: user?.id ?? msg.userId, results });
 }
 
 /* Pending queue (no GM online) */
@@ -649,9 +681,10 @@ export function flushAllPending() {
 export async function adoptCopiedHistory(actor) {
   if ( !isActiveGM() || !isCharacter(actor) ) return;
   const s = getStore(actor);
-  if ( !s.file || s.file.endsWith(`/${actor.id}.json`) ) return;
+  // Its own file already (any letter case: earlier versions wrote mixed-case names), or nothing to copy.
+  if ( !s.file || s.file.toLowerCase().endsWith(`/${actor.id.toLowerCase()}.json`) ) return;
   await withLock(actor.uuid, async () => {
-    const data = foundry.utils.deepClone(await loadData(actor));
+    const data = foundry.utils.deepClone(await loadData(actor, { fresh: true }));
     if ( data._loadError ) return;
     data.copiedFrom = s.file;
     await writeData(actor, data);

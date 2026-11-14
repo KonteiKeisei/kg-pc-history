@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.8
+
+- Security and bug fixes.
+
 ## 1.0.7
 
 - The ability score record's edit and reset buttons are locked with the same padlock as Rebuild. The Ability Scores

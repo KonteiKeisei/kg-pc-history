@@ -1,7 +1,7 @@
 import { MODULE_ID, isCharacter } from "./util.mjs";
 import { askSetupOnce, registerSettings } from "./settings.mjs";
 import { registerTracking, rebuildEntries } from "./tracking.mjs";
-import { adoptCopiedHistory, flushAllPending, loadView, registerStore, submit } from "./store.mjs";
+import { adoptCopiedHistory, flushAllPending, loadView, makeEntry, registerStore, submit } from "./store.mjs";
 import { patchCoreSheet, promptOnCreate, registerSheetHooks, registerTidy } from "./tab.mjs";
 import { GenerationApp } from "./apps/generation-app.mjs";
 
@@ -28,7 +28,7 @@ Hooks.once("ready", () => {
     /** Open the ability score window for an actor. */
     openGeneration: actor => GenerationApp.open(actor),
     /** Append entries (objects with label, category, level, detail, source, note). */
-    addEntries: (actor, entries) => submit(actor, [{ type: "append", entries }]),
+    addEntries: (actor, entries) => submit(actor, [{ type: "append", entries: (entries ?? []).map(e => makeEntry(e)) }]),
     /** GM: entries rebuilt from a character's stored advancements, without saving them. */
     rebuildEntries
   };

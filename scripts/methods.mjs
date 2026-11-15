@@ -75,11 +75,17 @@ export function allowedRollMethods() {
   return ROLL_METHODS.filter(m => cfg.methods[m.id]);
 }
 
+/** Is the module's ability score generation on at all? Off by default: other modules may roll scores too. */
+export function generationEnabled() {
+  return !!setting("enableGeneration");
+}
+
 export function allowedModes() {
+  const on = generationEnabled();
   return {
-    pointBuy: !!setting("allowPointBuy"),
-    standardArray: !!setting("allowStandardArray"),
-    roll: !!setting("allowRolling") && (allowedRollMethods().length > 0)
+    pointBuy: on && !!setting("allowPointBuy"),
+    standardArray: on && !!setting("allowStandardArray"),
+    roll: on && !!setting("allowRolling") && (allowedRollMethods().length > 0)
   };
 }
 

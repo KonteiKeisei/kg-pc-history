@@ -4,6 +4,7 @@ import { registerTracking, rebuildEntries } from "./tracking.mjs";
 import { adoptCopiedHistory, flushAllPending, loadView, makeEntry, registerStore, submit } from "./store.mjs";
 import { patchCoreSheet, promptOnCreate, registerSheetHooks, registerTidy } from "./tab.mjs";
 import { GenerationApp } from "./apps/generation-app.mjs";
+import { offerOnCreate, registerHandoff } from "./handoff.mjs";
 
 // Tidy fires its ready hook during its own setup; listen before anything else runs.
 registerTidy();
@@ -17,6 +18,7 @@ Hooks.once("init", () => {
 
 Hooks.once("setup", () => {
   registerStore();
+  registerHandoff();
 });
 
 Hooks.once("ready", () => {
@@ -38,4 +40,5 @@ Hooks.on("createActor", (actor, options, userId) => {
   if ( !isCharacter(actor) ) return;
   adoptCopiedHistory(actor);
   promptOnCreate(actor, userId);
+  offerOnCreate(actor, userId);
 });

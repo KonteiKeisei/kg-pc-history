@@ -28,7 +28,8 @@ export const ORIGINS = {
   manual: "Manual edit",
   gm: "GM entry",
   generation: "Generation",
-  reconstructed: "Rebuilt"
+  reconstructed: "Rebuilt",
+  skillTree: "Skill Tree"
 };
 
 export function esc(value) {

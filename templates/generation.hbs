@@ -1,4 +1,9 @@
 <div class="kg-pch-gen-app">
+  {{#if watching}}
+    <p class="kg-pch-hint kg-pch-watching"><i class="fa-solid fa-eye"></i>
+      {{#if final}}{{watching}} recorded these scores.{{else if playerClosed}}{{watching}} closed the window.{{else}}A live copy of {{watching}}'s window. Only they can change it.{{/if}}
+    </p>
+  {{/if}}
   {{#if final}}
     <p class="kg-pch-lead">Ability scores for {{actorName}} are already recorded ({{summary.method}}).</p>
     <div class="kg-pch-score-strip">
@@ -6,7 +11,7 @@
         <div class="kg-pch-score-cell" data-tooltip="{{label}}"><span class="abbr">{{abbr}}</span><span class="val">{{base}}</span></div>
       {{/each}}
     </div>
-    <p class="kg-pch-hint">{{#if isGM}}To change them, unlock the Ability Scores card on the History tab with its padlock, then use Edit or Reset.{{else}}Only the GM can change recorded scores.{{/if}}</p>
+    <p class="kg-pch-hint">{{#if gmViewer}}To change them, unlock the Ability Scores card on the History tab with its padlock, then use Edit or Reset.{{else}}Only the GM can change recorded scores.{{/if}}</p>
   {{else if noModes}}
     <p class="kg-pch-lead">The GM has not allowed any way to generate ability scores.</p>
   {{else}}

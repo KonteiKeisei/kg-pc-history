@@ -1,5 +1,5 @@
 import {
-  ABILITIES, CATEGORIES, ORIGINS, TAB_ID, TEMPLATES, abilityAbbr, abilityLabel, esc, formatDate, isCharacter,
+  ABILITIES, CATEGORIES, MODULE_ID, ORIGINS, TAB_ID, TEMPLATES, abilityAbbr, abilityLabel, esc, formatDate, isCharacter,
   levelFromSource, renderTemplate, setting, signed, userName, validClassOrder
 } from "./util.mjs";
 import { anyModeAllowed, inferGeneration, keptSets, methodLabel, rerollState } from "./methods.mjs";
@@ -918,10 +918,24 @@ export function patchCoreSheet() {
 
 const prompted = new Set();
 
-/** Should a new character be asked for ability scores? */
-export async function shouldPrompt(actor) {
+/** A character the GM made, waiting for its player to set its scores. */
+export function madeByGM(actor) {
+  return !!actor.getFlag(MODULE_ID, "askPlayer");
+}
+
+/** Do not ask again this session (the window was just opened another way). */
+export function markPrompted(actor) {
+  prompted.add(actor.uuid);
+}
+
+/**
+ * Should a new character be asked for ability scores? A character the GM made (`given`, or flagged when it was
+ * created) may already have a class and history before its player sees it, so only a missing score record counts.
+ */
+export async function shouldPrompt(actor, { given=false }={}) {
   if ( !isCharacter(actor) || !actor.isOwner || actor.isToken || !anyModeAllowed() ) return false;
   if ( levelFromSource(actor._source) > 1 ) return false;
+  if ( given || madeByGM(actor) ) return !(await loadView(actor)).generation;
   // A character with a history file or queued changes already has history: no need to download it to know that.
   const store = getStore(actor);
   if ( store.file || getPending(actor).length ) return false;
@@ -929,14 +943,23 @@ export async function shouldPrompt(actor) {
   return !view.generation && !view.entries.length;
 }
 
+/**
+ * Opening a sheet asks when the GM chose "open". A character the GM made also asks its player on open in either mode,
+ * in case the player was offline when the GM gave it to them; the GM gets a live copy.
+ */
 async function maybePromptOnOpen(actor) {
-  if ( game.user.isGM || (setting("promptMode") !== "open") || prompted.has(actor.uuid) ) return;
+  if ( game.user.isGM || prompted.has(actor.uuid) ) return;
+  const mode = setting("promptMode");
+  const given = madeByGM(actor);
+  if ( (mode === "never") || ((mode !== "open") && !given) ) return;
   prompted.add(actor.uuid);
-  if ( await shouldPrompt(actor) ) GenerationApp.open(actor);
+  if ( !(await shouldPrompt(actor)) ) return;
+  GenerationApp.open(actor, { watcher: given ? (game.users.activeGM?.id ?? null) : null });
 }
 
+/** A player making their own character is asked straight away. A character the GM makes waits for its player. */
 export async function promptOnCreate(actor, userId) {
-  if ( (userId !== game.user.id) || (setting("promptMode") === "never") ) return;
+  if ( (userId !== game.user.id) || game.user.isGM || (setting("promptMode") === "never") ) return;
   prompted.add(actor.uuid);
   if ( await shouldPrompt(actor) ) setTimeout(() => GenerationApp.open(actor), 300);
 }

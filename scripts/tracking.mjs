@@ -39,6 +39,22 @@ function safe(fn) {
   try { return fn(); } catch(err) { return null; }
 }
 
+/*
+ * KG Skill Trees marks every item a skill tree node grants with flags["kg-skill-tree"].grant =
+ * { treeId, treeName, nodeId, nodeName, cost, level }, and passes `kgSkillTree` in the options of the creates and
+ * deletes it makes. Those items are recorded as Skill Tree entries, whatever their type.
+ */
+const SKILL_TREE = "kg-skill-tree";
+
+function treeGrant(doc) {
+  const grant = doc?.flags?.[SKILL_TREE]?.grant;
+  return grant?.treeId ? grant : null;
+}
+
+function treeSource(grant, via) {
+  return { name: grant.treeName || "Skill Tree", type: "skillTree", via };
+}
+
 function traitKey(chosen, mastery) {
   const parts = String(chosen).split(":");
   if ( parts.length < 2 ) return null;
@@ -315,9 +331,34 @@ function onPreComplete(manager, updates) {
     }
     const newItemIds = new Set(Object.keys(after.items).filter(id => !before.items[id]));
     const entries = buildEntries(steps, { mode: "live", atoms, before, after, newItemIds });
+    markSkillTreeEntries(entries, manager, newItemIds);
     if ( entries.length ) managerEntries.set(manager, entries);
   } catch(err) {
     console.error(`${MODULE_ID} | Could not record advancement`, err);
+  }
+}
+
+/**
+ * An item a skill tree granted through the advancement prompt (a feat with an Ability Score Improvement, say): its own
+ * entry is a Skill Tree entry, and entries its advancements made say which tree it came from.
+ */
+function markSkillTreeEntries(entries, manager, newItemIds) {
+  const grantFor = id => (newItemIds.has(id) ? treeGrant(manager.clone?.items?.get(id)) : null);
+  for ( const e of entries ) {
+    const itemId = e.key?.startsWith("item:") ? e.key.slice(5) : null;
+    const own = itemId ? grantFor(itemId) : null;
+    if ( own ) {
+      e.origin = "skillTree";
+      e.source = treeSource(own, `${own.gm ? "Granted by the GM" : "Unlocked"}: ${own.nodeName}`);
+      if ( own.note ) e.note = own.note;
+      if ( Number.isFinite(Number(own.level)) && (own.level !== null) ) e.level = Number(own.level);
+      continue;
+    }
+    const parent = e.source?.id ? grantFor(e.source.id) : null;
+    if ( parent ) {
+      e.source.via = [e.source.via, `from ${parent.treeName || "a skill tree"}`].filter(Boolean).join(", ");
+      if ( parent.gm && Number.isFinite(Number(parent.level)) && (parent.level !== null) ) e.level = Number(parent.level);
+    }
   }
 }
 
@@ -402,11 +443,27 @@ function onItemChange(item, options, userId, removed) {
   if ( userId !== game.user.id ) return;
   const actor = item.parent;
   if ( !isCharacter(actor) || actor.isToken || advancing.has(actor.uuid) ) return;
-  if ( options.isAdvancement || options.kgPcHistory || !setting("trackManual") ) return;
-  if ( !TRACKED_ITEM_TYPES.has(item.type) ) return;
-  if ( item.getFlag?.("dnd5e", "advancementOrigin") ) return;
+  if ( options.isAdvancement || options.kgPcHistory ) return;
   const it = { name: item.name, type: item.type, subtype: item.system?.type?.value ?? "" };
   const user = game.users.get(userId) ?? game.user;
+  // Bought or refunded in a skill tree. An item deleted by hand still counts as a manual removal below.
+  const grant = treeGrant(item);
+  if ( grant && (options.kgSkillTree || !removed) ) {
+    if ( !setting("trackAdvancement") ) return;
+    const current = Number(actor.system?.details?.level ?? 0);
+    const at = Number(grant.level);
+    queueItemEntry(actor, makeEntry({
+      ...describeAtom({ key: `item:${item.id}`, added: !removed, removed, item: it }),
+      level: (!removed && Number.isFinite(at) && (grant.level !== null)) ? at : current,
+      origin: "skillTree", user: user.id,
+      source: treeSource(grant, `${removed ? "Refunded" : (grant.gm ? "Granted by the GM" : "Unlocked")}: ${grant.nodeName}`),
+      ...(!removed && grant.note ? { note: grant.note } : {})
+    }));
+    return;
+  }
+  if ( !setting("trackManual") ) return;
+  if ( !TRACKED_ITEM_TYPES.has(item.type) ) return;
+  if ( item.getFlag?.("dnd5e", "advancementOrigin") ) return;
   queueItemEntry(actor, makeEntry({
     ...describeAtom({ key: `item:${item.id}`, added: !removed, removed, item: it }),
     level: actor.system?.details?.level ?? 0, origin: "manual", user: user.id,
@@ -615,6 +672,19 @@ export async function rebuildEntries(actor, { order=null }={}) {
       }));
     }
     referenced.add(cls.id);
+  }
+  // Skill tree grants say where they came from and the level they were bought at.
+  const treeItems = actor.items.filter(i => treeGrant(i) && !referenced.has(i.id));
+  for ( const item of treeItems ) {
+    const grant = treeGrant(item);
+    const L = Number(grant.level);
+    entries.push(makeEntry({
+      ...describeAtom({ key: `item:${item.id}`, added: true, item: snap.items[item.id] }),
+      level: (grant.level !== null) && Number.isFinite(L) ? L : null, origin: "reconstructed",
+      source: treeSource(grant, `${grant.gm ? "Granted by the GM" : "Unlocked"}: ${grant.nodeName}`),
+      ...(grant.note ? { note: grant.note } : {})
+    }));
+    referenced.add(item.id);
   }
   const unlinked = actor.items.filter(i => TRACKED_ITEM_TYPES.has(i.type) && !referenced.has(i.id));
   const feats = unlinked.filter(i => i.type === "feat");

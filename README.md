@@ -11,11 +11,15 @@ Tested on Foundry v13 with dnd5e 5.3.3 and Foundry v14 with dnd5e 6.x, on the de
 
 ## Ability scores (optional, off by default)
 
-Ability score generation is an optional extra and starts turned off, since another module may already handle character
-creation. The first time a GM loads the world, the module asks whether to turn it on. It can be changed any time in the
-module settings. History tracking works either way.
+Ability score generation is an optional extra and starts turned off, since it can conflict with other modules that
+roll ability scores. While it is off, the module never asks for scores. The first time a GM loads the world, the module
+asks whether to turn it on, and the Ability Score Generation setting changes it any time. History tracking, the ability
+score breakdown and Rebuild's inferred scores work either way.
 
 - Point buy, standard array, or rolled. The GM chooses which are allowed.
+- A player making a character is asked for its scores. A character the GM makes is not: when the GM gives a player
+  ownership of it, the window opens for that player, and the GM sees a live copy. A player who is offline then is asked
+  when they next open the character.
 - Rolling methods: 4d6 drop lowest, reroll 1s (once or always), in order, seven scores drop the lowest, 3d6,
   3d6 in order, 2d6+6, 5d6 keep 3.
 - Rolls are made on the GM's client and saved before the player assigns them. The GM sets how many rerolls are
@@ -49,11 +53,12 @@ module settings. History tracking works either way.
 
 | Setting | Default |
 |---|---|
-| Allow Point Buy | Off (27 points when on) |
-| Allow Standard Array | Off |
-| Allow Rolling | Off |
-| Rolling Methods | 4d6 drop lowest, when rolling is on |
-| Ask for Ability Scores | On creation, and on the player's first open (only when generation is on) |
+| Ability Score Generation | Off. The settings below only apply when it is on. |
+| Allow Point Buy | On (27 points) |
+| Allow Standard Array | On |
+| Allow Rolling | On |
+| Rolling Methods | 4d6 drop lowest |
+| Ask for Ability Scores | On creation or hand-off to a player, and on the player's first open |
 | Record Advancement | On |
 | Record Manual Changes | On |
 | Players See the History Tab | On |

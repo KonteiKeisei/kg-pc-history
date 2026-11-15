@@ -13,7 +13,7 @@ import {
  * applied once.
  */
 
-const SOCKET = `module.${MODULE_ID}`;
+export const SOCKET = `module.${MODULE_ID}`;
 const GM_ONLY = new Set(["updateEntry", "deleteEntry", "deleteEntries", "rekeyEntries", "placeEntries", "setGeneration", "resetGeneration", "setClassOrder"]);
 const APPLIED_CAP = 400;
 const REQUEST_TIMEOUT = 15000;
@@ -113,7 +113,7 @@ function playerEntry(e, op) {
   const out = { ...e, user: op.user };
   delete out.editedBy;
   delete out.editedAt;
-  if ( !["advancement", "manual"].includes(out.origin) ) out.origin = "manual";
+  if ( !["advancement", "manual", "skillTree"].includes(out.origin) ) out.origin = "manual";
   if ( ["note", "generation"].includes(out.category) ) out.category = "other";
   return out;
 }
@@ -634,10 +634,15 @@ export function guardUpdate(actor, changes) {
   if ( !keys.length ) return;
   let ok = (keys.length === 1) && (keys[0] === MODULE_ID);
   const ns = changes.flags[MODULE_ID];
-  if ( ok ) ok = !!ns && (typeof ns === "object") && Object.keys(ns).every(k => k === "store");
+  // Other keys may come along unchanged: dnd5e's level-up saves the whole flags object, including the GM's mark on a
+  // character the GM made.
+  const same = (k, v) => JSON.stringify(v) === JSON.stringify(actor._source?.flags?.[MODULE_ID]?.[k]);
+  if ( ok ) ok = !!ns && (typeof ns === "object") && Object.entries(ns).every(([k, v]) => (k === "store") || same(k, v));
   const st = ok ? ns.store : null;
-  if ( ok ) ok = !!st && (typeof st === "object");
-  if ( ok ) {
+  // Leaving `store` out is fine only when there is none yet; otherwise a whole-flags save would drop the history link.
+  if ( ok && !("store" in ns) ) ok = actor._source?.flags?.[MODULE_ID]?.store === undefined;
+  else if ( ok ) ok = !!st && (typeof st === "object");
+  if ( ok && st ) {
     const current = getStore(actor);
     for ( const [k, v] of Object.entries(st) ) {
       if ( k === "pending" ) {

@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.9
+
+- KG Skill Trees support: items a skill tree node grants (feats, spells, equipment, summon features) are recorded as
+  Skill Tree entries naming the tree and node, at the level they were bought. Refunds are recorded the same way.
+  Feats bought through the advancement prompt keep their advancement entries, which also name the tree. Rebuild places
+  skill tree items at their purchase level. GM grants are recorded as "Granted by the GM" at the level the GM chose,
+  with the GM's note.
+- Ability score generation has one main setting, Ability Score Generation, off by default because it can conflict with
+  other modules that roll ability scores. While it is off, the module never asks for scores. The ability score record,
+  its breakdown and Rebuild's inferred scores work either way. The first-run prompt now asks about this setting. Worlds
+  that already turned generation on keep it on.
+- A character the GM makes no longer opens the ability score window for the GM. When the GM gives a player ownership
+  of it, the window opens for that player, and the GM gets a live, read-only copy. A player who is offline then is
+  asked when they next open the character.
+
 ## 1.0.8
 
 - Security and bug fixes.

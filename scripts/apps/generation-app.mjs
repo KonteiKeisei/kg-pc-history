@@ -3,7 +3,7 @@ import {
   POINT_BUY_COSTS, POINT_BUY_MAX, POINT_BUY_MIN, ROLL_METHODS, STANDARD_ARRAY, allowedModes, allowedRollMethods,
   existingBonuses, getMethod, keptSets, methodLabel, pointBuyBudget, pointBuySpent, rerollState
 } from "../methods.mjs";
-import { loadView, reportResults, submit } from "../store.mjs";
+import { SOCKET, loadView, reportResults, submit } from "../store.mjs";
 
 const { ApplicationV2, HandlebarsApplicationMixin, DialogV2 } = foundry.applications.api;
 
@@ -32,15 +32,41 @@ export class GenerationApp extends HandlebarsApplicationMixin(ApplicationV2) {
     body: { template: `${TEMPLATES}/generation.hbs` }
   };
 
-  static open(actor) {
+  /**
+   * Open the window for this user. `watcher`: a GM to send a live copy of the window to, while it stays open.
+   */
+  static open(actor, { watcher=null }={}) {
     const app = openApp(`kg-pch-generation-${actor.id}`) ?? new GenerationApp(actor);
+    if ( watcher ) app.watcher = watcher;
     app.render({ force: true });
     return app;
   }
 
-  constructor(actor, options={}) {
+  /** GM: the live, read-only copy of a player's window. Opened on the first update unless the GM closed it. */
+  static mirror(actor, player, { state, closed }) {
+    const id = `kg-pch-generation-watch-${actor.id}`;
+    let app = openApp(id);
+    if ( !app ) {
+      if ( closed || GenerationApp.dismissed.has(actor.id) ) return;
+      app = new GenerationApp(actor, { id, watchUser: player });
+    }
+    if ( state ) {
+      for ( const k of ["mode", "methodId", "pb", "sa", "assign"] ) if ( k in state ) app[k] = state[k] ?? app[k];
+      app.playerClosed = false;
+    }
+    if ( closed ) app.playerClosed = true;
+    app.render({ force: !app.rendered });
+  }
+
+  /** Actors whose live copy the GM closed this session: it is not reopened until the character is offered again. */
+  static dismissed = new Set();
+
+  constructor(actor, { watchUser=null, ...options }={}) {
     super({ id: `kg-pch-generation-${actor.id}`, ...options });
     this.actor = actor;
+    this.watchUser = watchUser;
+    this.watcher = null;
+    this.playerClosed = false;
     this.mode = null;
     this.methodId = null;
     this.pb = Object.fromEntries(ABILITIES.map(a => [a, POINT_BUY_MIN]));
@@ -56,19 +82,32 @@ export class GenerationApp extends HandlebarsApplicationMixin(ApplicationV2) {
   #hook;
 
   get title() {
+    if ( this.watchUser ) return `Watching ${this.watchUser.name}: ${this.actor.name}`;
     return `Ability Scores: ${this.actor.name}`;
   }
 
   _onClose(options) {
     Hooks.off("updateActor", this.#hook);
+    if ( this.watchUser ) GenerationApp.dismissed.add(this.actor.id);
+    else this.#sendState(true);
     super._onClose?.(options);
+  }
+
+  /** Send the player's choices to the watching GM. Rolls are on the character already; this is what is on screen. */
+  #sendState(closed=false) {
+    if ( !this.watcher || this.watchUser ) return;
+    const state = closed ? null : {
+      mode: this.mode, methodId: this.methodId, pb: { ...this.pb }, sa: { ...this.sa }, assign: { ...this.assign }
+    };
+    game.socket.emit(SOCKET, { type: "genState", actorUuid: this.actor.uuid, to: this.watcher, state, closed });
   }
 
   async _prepareContext() {
     const view = await loadView(this.actor);
     const gen = view.generation;
     this.gen = gen;
-    const isGM = game.user.isGM;
+    // The GM's live copy shows what the player sees, with the player's limits.
+    const isGM = game.user.isGM && !this.watchUser;
     const allowed = allowedModes();
     const rolling = gen?.status === "rolling";
     const final = gen?.status === "final";
@@ -80,6 +119,7 @@ export class GenerationApp extends HandlebarsApplicationMixin(ApplicationV2) {
 
     const ctx = {
       actorName: this.actor.name,
+      watching: this.watchUser?.name ?? null, playerClosed: this.playerClosed, gmViewer: game.user.isGM,
       isGM, final, rolling, busy: this.busy,
       noModes: !modes.length,
       modes: modes.map(m => ({ ...m, active: m.id === this.mode, disabled: rolling && (m.id !== "roll") })),
@@ -181,6 +221,11 @@ export class GenerationApp extends HandlebarsApplicationMixin(ApplicationV2) {
   _onRender(context, options) {
     super._onRender?.(context, options);
     const el = this.element;
+    if ( this.watchUser ) {
+      el.querySelectorAll(".kg-pch-gen-app button, .kg-pch-gen-app select, .kg-pch-gen-app input").forEach(c => c.disabled = true);
+      return;
+    }
+    this.#sendState();
     el.querySelectorAll("[data-kg-sa]").forEach(s => s.addEventListener("change", ev => {
       const v = Number(ev.currentTarget.value);
       this.sa[ev.currentTarget.dataset.kgSa] = v || undefined;
